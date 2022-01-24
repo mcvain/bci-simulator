@@ -19,12 +19,20 @@ def decoder_arpsd(eeg, x_control_buffer, y_control_buffer, normalize_mode):
         spectralDensity_output_Burg.append(np.mean(spectralDensity_Burg))  # alpha power
 
     if normalize_mode == 0:  # operate then normalize
-        y_control_raw = spectralDensity_output_Burg[0] + spectralDensity_output_Burg[1]  # C3 + C4
-        x_control_raw = spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]  # C4 - C3
+        # y_control_raw_unrotated = - spectralDensity_output_Burg[0] - spectralDensity_output_Burg[1]  # -C4 -C3
+        # x_control_raw_unrotated = spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]  # C4 - C3
+
+        # Corrected
+        # x_control_raw = 0.4251 * spectralDensity_output_Burg[1] + (-1.3488) * spectralDensity_output_Burg[0]
+        # y_control_raw = -1.2934 * spectralDensity_output_Burg[1] - 0.5720 * spectralDensity_output_Burg[0]
+
+        # Uncorrected
+        x_control_raw = spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]
+        y_control_raw = - spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]
 
         # Save into buffer for time-history
-        y_control_buffer.append(y_control_raw)
         x_control_buffer.append(x_control_raw)
+        y_control_buffer.append(y_control_raw)  # corrected into time history is closer to BCI2000 behavior.(10/30/2021)
 
         # How long should the buffer length be?
         x_control = (x_control_raw - np.mean(x_control_buffer[-bufferLength:])) / (
@@ -35,19 +43,19 @@ def decoder_arpsd(eeg, x_control_buffer, y_control_buffer, normalize_mode):
         d = 0.3
 
         # Dwell state implementation
-        if abs(x_control) >= d:
-            x_control = x_control - d * np.sign(x_control)
-        elif abs(x_control) < d:
-            x_control = x_control / 10
-            # del x_control_buffer[-1]
-            x_control_buffer.append(x_control)
-
-        if abs(y_control) >= d:
-            y_control = y_control - d * np.sign(y_control)
-        elif abs(y_control) < d:
-            y_control = y_control / 10
-            # del y_control_buffer[-1]
-            y_control_buffer.append(y_control)
+        # if abs(x_control) >= d:
+        #     x_control = x_control - d * np.sign(x_control)
+        # elif abs(x_control) < d:
+        #     x_control = x_control / 10
+        #     # del x_control_buffer[-1]
+        #     x_control_buffer.append(x_control)
+        #
+        # if abs(y_control) >= d:
+        #     y_control = y_control - d * np.sign(y_control)
+        # elif abs(y_control) < d:
+        #     y_control = y_control / 10
+        #     # del y_control_buffer[-1]
+        #     y_control_buffer.append(y_control)
 
     elif normalize_mode == 1:  # normalize and then operate
         # Save into buffer for time-history
@@ -58,12 +66,16 @@ def decoder_arpsd(eeg, x_control_buffer, y_control_buffer, normalize_mode):
             x_control_buffer[-bufferLength:])
         C4_normalized = (spectralDensity_output_Burg[1] - np.mean(y_control_buffer[-bufferLength:])) / np.std(
             y_control_buffer[-bufferLength:])
-        x_control = (C4_normalized - C3_normalized)
-        y_control = (C3_normalized + C4_normalized)
 
-        d = 0.3
 
-        # Dwell state implementation
+        x_control = 1 * C4_normalized + (-1) * C3_normalized
+        y_control = -1 * C4_normalized - 1 * C3_normalized
+
+        # print(x_control, y_control)
+
+        d = 0.7
+
+        # # # # Dwell state implementation
         # if abs(x_control) >= d:
         #     x_control = x_control - d * np.sign(x_control)
         # elif abs(x_control) < d:

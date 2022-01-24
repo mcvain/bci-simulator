@@ -37,14 +37,11 @@ class ContinuousTarget(pygame.sprite.Sprite):
         self.edge_threshold = edge_threshold
         self.max_target_velocity = max_target_velocity
 
-        self.targetPathTrial = np.zeros(shape=(trialLength+1, 2), dtype=np.float32)
-        self.targetVelocityTrial = np.zeros(shape=(trialLength+1, 2), dtype=np.float32)
-
         self.physics_mode = target_physics_mode
 
         self.iteration = 0
 
-    def update(self, frames):
+    def update(self, frames, trial_no, target_no, targetPath, targetVel):
         # New approach (4/20/2021) - Transferred from bcisim_TargetKinemSim3.m
         speed_limit = self.max_target_velocity
         if self.physics_mode == "adjust_drag":
@@ -113,11 +110,10 @@ class ContinuousTarget(pygame.sprite.Sprite):
             self.v.xy = 0.0001, 0.0001  # Same as init settings
 
         # Save position and velocity information
-        self.targetPathTrial[frames] = [self.rect.x, self.rect.y]
-        self.targetVelocityTrial[frames] = [self.v.x, self.v.y]
+        targetPath[trial_no][target_no].append([self.rect.x, self.rect.y])
+        targetVel[trial_no][target_no].append([self.v.x, self.v.y])
 
-    def report_trajectory(self):
-        return self.targetPathTrial, self.targetVelocityTrial
+        return targetPath, targetVel
 
 
 # Calibration target that goes in a circle (unused)
@@ -186,7 +182,7 @@ class BarTarget(pygame.sprite.Sprite):
 class BarTargetUp(BarTarget):
     def __init__(self):
         BarTarget.__init__(self)
-        self.target_loc = "up"
+        self.target_loc = 3
         self.target_width = 700
         self.target_height = 25
         self.image = pygame.Surface((self.target_width, self.target_height))
@@ -196,32 +192,24 @@ class BarTargetUp(BarTarget):
 
         self.rect = self.image.get_rect()
 
-    def update(self, playerSprite, chosenTarget, targetSprite, screen):
+    def update(self, frames, trial_no, target_no, targetPath, targetVel):
         global score
 
-        print(self.target_loc)
         self.rect.x = (screen_width - self.target_width) // 2
         self.rect.y = 25  # screen_height - 100
-        print(self.rect.x, self.rect.y)
 
         pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)
 
-        if pygame.sprite.groupcollide(playerSprite, chosenTarget, 0, 0):
-            # explosionSprites.add(EnemyExplosion(self.rect.center))
-            chosenTarget.add(random.choice(targetSprite.sprites()))  # replenish the chosenTarget single sprite group.
-            score += 1
-            print(score)
-            screen.fill(pygame.Color("white"))  # this line doesn't seem to be working
+        targetPath[trial_no][target_no].append([self.rect.x, self.rect.y])
+        targetVel[trial_no][target_no].append([self.target_loc, self.target_loc])
 
-            # pygame.time.wait(3000) # delay between reaches?
-
-            pygame.mouse.set_pos(400, 400)
+        return targetPath, targetVel
 
 
 class BarTargetDown(BarTarget):
     def __init__(self):
         BarTarget.__init__(self)
-        self.target_loc = "down"
+        self.target_loc = 4
         self.target_width = 700
         self.target_height = 25
         self.image = pygame.Surface((self.target_width, self.target_height))
@@ -231,34 +219,25 @@ class BarTargetDown(BarTarget):
 
         self.rect = self.image.get_rect()
 
-    def update(self, playerSprite, chosenTarget, targetSprite, screen):
+    def update(self, frames, trial_no, target_no, targetPath, targetVel):
         global score
-        self.target_loc = "down"
         self.target_width = 700
         self.target_height = 25
-        print(self.target_loc)
         self.rect.x = (screen_width - self.target_width) // 2
         self.rect.y = screen_height - 50
-        print(self.rect.x, self.rect.y)
 
         pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)
 
-        if pygame.sprite.groupcollide(playerSprite, chosenTarget, 0, 0):
-            # explosionSprites.add(EnemyExplosion(self.rect.center))
-            chosenTarget.add(random.choice(targetSprite.sprites()))  # replenish the chosenTarget single sprite group.
-            score += 1
-            print(score)
-            screen.fill(pygame.Color("white"))  # this line doesn't seem to be working
+        targetPath[trial_no][target_no].append([self.rect.x, self.rect.y])
+        targetVel[trial_no][target_no].append([self.target_loc, self.target_loc])
 
-            # pygame.time.wait(3000) # delay between reaches?
-
-            pygame.mouse.set_pos(400, 400)
+        return targetPath, targetVel
 
 
 class BarTargetLeft(BarTarget):
     def __init__(self):
         BarTarget.__init__(self)
-        self.target_loc = "left"
+        self.target_loc = 2
         self.target_width = 25
         self.target_height = 700
         self.image = pygame.Surface((self.target_width, self.target_height))
@@ -268,34 +247,25 @@ class BarTargetLeft(BarTarget):
 
         self.rect = self.image.get_rect()
 
-    def update(self, playerSprite, chosenTarget, targetSprite, screen):
+    def update(self, frames, trial_no, target_no, targetPath, targetVel):
         global score
-        self.target_loc = "left"
         self.target_width = 25
         self.target_height = 700
-        print(self.target_loc)
         self.rect.x = 25
         self.rect.y = (screen_height - self.target_height) // 2
-        print(self.rect.x, self.rect.y)
 
         pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)
 
-        if pygame.sprite.groupcollide(playerSprite, chosenTarget, 0, 0):
-            # explosionSprites.add(EnemyExplosion(self.rect.center))
-            chosenTarget.add(random.choice(targetSprite.sprites()))  # replenish the chosenTarget single sprite group.
-            score += 1
-            print(score)
-            screen.fill(pygame.Color("white"))  # this line doesn't seem to be working
+        targetPath[trial_no][target_no].append([self.rect.x, self.rect.y])
+        targetVel[trial_no][target_no].append([self.target_loc, self.target_loc])
 
-            # pygame.time.wait(3000) # delay between reaches?
-
-            pygame.mouse.set_pos(400, 400)
+        return targetPath, targetVel
 
 
 class BarTargetRight(BarTarget):
     def __init__(self):
         BarTarget.__init__(self)
-        self.target_loc = "right"
+        self.target_loc = 1
         self.target_width = 25
         self.target_height = 700
         self.image = pygame.Surface((self.target_width, self.target_height))
@@ -305,25 +275,19 @@ class BarTargetRight(BarTarget):
 
         self.rect = self.image.get_rect()
 
-    def update(self, playerSprite, chosenTarget, targetSprite, screen):
+    def update(self, frames, trial_no, target_no, targetPath, targetVel):
         global score
-        self.target_loc = "right"
         self.target_width = 25
         self.target_height = 700
-        print(self.target_loc)
         self.rect.x = screen_width - 50
         self.rect.y = (screen_height - self.target_height) // 2
-        print(self.rect.x, self.rect.y)
 
         pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)
 
-        if pygame.sprite.groupcollide(playerSprite, chosenTarget, 0, 0):
-            # explosionSprites.add(EnemyExplosion(self.rect.center))
-            chosenTarget.add(random.choice(targetSprite.sprites()))  # replenish the chosenTarget single sprite group.
-            score += 1
-            print(score)
-            screen.fill(pygame.Color("white"))  # this line doesn't seem to be working
+        targetPath[trial_no][target_no].append([self.rect.x, self.rect.y])
+        targetVel[trial_no][target_no].append([self.target_loc, self.target_loc])
 
-            # pygame.time.wait(3000) # delay between reaches?
+        return targetPath, targetVel
 
-            pygame.mouse.set_pos(400, 400)
+
+

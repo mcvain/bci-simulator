@@ -11,7 +11,7 @@ def user_input():
 
     # Define user parameters and set default values
     normalize_mode = tk.IntVar()
-    normalize_mode.set(1)
+    normalize_mode.set(0)
     game_mode = tk.StringVar()
     game_mode.set("CP")
     leadfield_mode = tk.StringVar()
