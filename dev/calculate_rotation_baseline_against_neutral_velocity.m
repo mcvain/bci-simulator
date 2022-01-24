@@ -163,8 +163,9 @@ for dir = 1:2
     UD_trials = trials_by_dir_UD{dir}; 
     UD_neutral_trials = [left_trials; right_trials]; % for vy=0. 
     
-    % calculate neutral(baseline) power first 
-    C3_neutral_powers = []; C4_neutral_powers = []; 
+    % Calculate mean neutral(v=0) power first 
+    C3_neutral_powers = []; C4_neutral_powers = [];
+    hor_neutral = []; ver_neutral = []; % alternative approach 
     for tr = 1:length(LR_neutral_trials) 
         trial = LR_neutral_trials(tr); 
         eeg_control = EEG_UD.data(:, trial_data_UD.FeedbackStart(trial):trial_data_UD.FeedbackEnd(trial));
@@ -174,11 +175,16 @@ for dir = 1:2
         C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]);
         C3_neutral_powers = [C3_neutral_powers, C3_control_alpha]; 
         C4_neutral_powers = [C4_neutral_powers, C4_control_alpha]; 
+        hor_neutral = [hor_neutral, C4_control_alpha - C3_control_alpha]; % alternative approach 
+        ver_neutral = [ver_neutral, -C4_control_alpha-C3_control_alpha]; % alternative approach 
     end
     C3_neutral_alpha_LR = mean(C3_neutral_powers); 
     C4_neutral_alpha_LR = mean(C4_neutral_powers); 
+    hor_neutral_LR = mean(hor_neutral); % alternative approach 
+    ver_neutral_LR = mean(ver_neutral); % alternative approach
     
     C3_neutral_powers = []; C4_neutral_powers = []; 
+    hor_neutral = []; ver_neutral = []; % alternative approach 
     for tr = 1:length(UD_neutral_trials) 
         trial = UD_neutral_trials(tr); 
         eeg_control = EEG_LR.data(:, trial_data_LR.FeedbackStart(trial):trial_data_LR.FeedbackEnd(trial));
@@ -188,9 +194,13 @@ for dir = 1:2
         C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]);
         C3_neutral_powers = [C3_neutral_powers, C3_control_alpha]; 
         C4_neutral_powers = [C4_neutral_powers, C4_control_alpha]; 
+        hor_neutral = [hor_neutral, C4_control_alpha - C3_control_alpha]; % alternative approach 
+        ver_neutral = [ver_neutral, -C4_control_alpha-C3_control_alpha]; % alternative approach 
     end
     C3_neutral_alpha_UD = mean(C3_neutral_powers); 
     C4_neutral_alpha_UD = mean(C4_neutral_powers);
+    hor_neutral_UD = mean(hor_neutral); % alternative approach 
+    ver_neutral_UD = mean(ver_neutral); % alternative approach 
     
     control_data_table = output{1}; 
     for tr = 1:length(LR_trials)
@@ -201,11 +211,15 @@ for dir = 1:2
         C3_control_alpha = bandpower(C3_data_control, sampling_rate, [8 12]); 
         C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]); 
         
-        relative_C3 = C3_control_alpha - C3_neutral_alpha_LR; 
-        relative_C4 = C4_control_alpha - C4_neutral_alpha_LR; 
+        %relative_C3 = C3_control_alpha - C3_neutral_alpha_LR; 
+        %relative_C4 = C4_control_alpha - C4_neutral_alpha_LR; 
+        relative_C3 = C3_control_alpha; % alternative approach 
+        relative_C4 = C4_control_alpha; % alternative approach 
         
-        control_data_table(trial, 1) = relative_C4 - relative_C3; 
-        control_data_table(trial, 2) = -(relative_C4 + relative_C3);
+        %control_data_table(trial, 1) = relative_C4 - relative_C3; 
+        %control_data_table(trial, 2) = -(relative_C4 + relative_C3);
+        control_data_table(trial, 1) = relative_C4 - relative_C3 - hor_neutral_LR; % alternative approach 
+        control_data_table(trial, 2) = -(relative_C4 + relative_C3) - ver_neutral_LR; % alternative approach 
         
         % CHANGE HERE IF DIRECTION CODE IS WRONG 
         if dir == 1 % RIGHT
@@ -234,11 +248,15 @@ for dir = 1:2
         C3_control_alpha = bandpower(C3_data_control, sampling_rate, [8 12]); 
         C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]); 
         
-        relative_C3 = C3_control_alpha - C3_neutral_alpha_UD; 
-        relative_C4 = C4_control_alpha - C4_neutral_alpha_UD; 
+        %relative_C3 = C3_control_alpha - C3_neutral_alpha_UD; 
+        %relative_C4 = C4_control_alpha - C4_neutral_alpha_UD; 
+        relative_C3 = C3_control_alpha; % alternative approach 
+        relative_C4 = C4_control_alpha; % alternative approach 
         
-        control_data_table(trial, 1) = relative_C4 - relative_C3; 
-        control_data_table(trial, 2) = -(relative_C4 + relative_C3);
+        %control_data_table(trial, 1) = relative_C4 - relative_C3; 
+        %control_data_table(trial, 2) = -(relative_C4 + relative_C3);
+        control_data_table(trial, 1) = relative_C4 - relative_C3 - hor_neutral_UD; % alternative approach 
+        control_data_table(trial, 2) = -(relative_C4 + relative_C3) - ver_neutral_UD; % alternative approach 
         
         % CHANGE HERE IF DIRECTION CODE IS WRONG 
         if dir == 1 % UP
@@ -335,4 +353,3 @@ p4 = plot([0, cd_new(1)], [0, cd_new(2)]);
 px = xline(0, '--'); py = yline(0, '--');
 legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
 
-    
