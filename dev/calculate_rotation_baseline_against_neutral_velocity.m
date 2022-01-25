@@ -14,20 +14,23 @@ catch
     addpath('C:\Users\mcvai\eeglab2020_0');
 end
 eeglab; 
-output_param_dir = 'rotated2D.prm'; 
+% output_param_dir = 'rotated2D.prm'; 
 
 % Parameters 
 sampling_rate = 250; 
 baseline_method = 3;
-timeout_trial_weight = 0.33; 
+timeout_trial_weight = 0.8; 
+alphaband_definition = [8 13]; 
 
 % Define channels from BCI2000
 C3 = 7; C3_laplacians = [3, 6, 8, 11];
 C4 = 9; C4_laplacians = [5, 8, 10, 13];
 
 % Input dataset from calibration task. 
-[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
-[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
+[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\BCI2000\BCI2000 v3.6.beta.R5711\BCI2000.x64\parms\shin_test\HS_20220125');
+[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\BCI2000\BCI2000 v3.6.beta.R5711\BCI2000.x64\parms\shin_test\HS_20220125');
+%[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
+%[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
 %[EEG_LR, command] = pop_loadset('DF_20211105_LR.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
 %[EEG_UD, command] = pop_loadset('DF_20211105_UD.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
 
@@ -170,9 +173,9 @@ for dir = 1:2
         trial = LR_neutral_trials(tr); 
         eeg_control = EEG_UD.data(:, trial_data_UD.FeedbackStart(trial):trial_data_UD.FeedbackEnd(trial));
         C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:));
-        C3_control_alpha = bandpower(C3_data_control, sampling_rate, [8 12]); 
-        C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]);
+        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:)); 
+        C3_control_alpha = bandpower(C3_data_control, sampling_rate, alphaband_definition); 
+        C4_control_alpha = bandpower(C4_data_control, sampling_rate, alphaband_definition);
         C3_neutral_powers = [C3_neutral_powers, C3_control_alpha]; 
         C4_neutral_powers = [C4_neutral_powers, C4_control_alpha]; 
         hor_neutral = [hor_neutral, C4_control_alpha - C3_control_alpha]; % alternative approach 
@@ -190,8 +193,8 @@ for dir = 1:2
         eeg_control = EEG_LR.data(:, trial_data_LR.FeedbackStart(trial):trial_data_LR.FeedbackEnd(trial));
         C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
         C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:));
-        C3_control_alpha = bandpower(C3_data_control, sampling_rate, [8 12]); 
-        C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]);
+        C3_control_alpha = bandpower(C3_data_control, sampling_rate, alphaband_definition); 
+        C4_control_alpha = bandpower(C4_data_control, sampling_rate, alphaband_definition);
         C3_neutral_powers = [C3_neutral_powers, C3_control_alpha]; 
         C4_neutral_powers = [C4_neutral_powers, C4_control_alpha]; 
         hor_neutral = [hor_neutral, C4_control_alpha - C3_control_alpha]; % alternative approach 
@@ -207,9 +210,9 @@ for dir = 1:2
         trial = LR_trials(tr); 
         eeg_control = EEG_LR.data(:, trial_data_LR.FeedbackStart(trial):trial_data_LR.FeedbackEnd(trial));
         C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:));
-        C3_control_alpha = bandpower(C3_data_control, sampling_rate, [8 12]); 
-        C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]); 
+        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:)); 
+        C3_control_alpha = bandpower(C3_data_control, sampling_rate, alphaband_definition); 
+        C4_control_alpha = bandpower(C4_data_control, sampling_rate, alphaband_definition); 
         
         %relative_C3 = C3_control_alpha - C3_neutral_alpha_LR; 
         %relative_C4 = C4_control_alpha - C4_neutral_alpha_LR; 
@@ -218,8 +221,8 @@ for dir = 1:2
         
         %control_data_table(trial, 1) = relative_C4 - relative_C3; 
         %control_data_table(trial, 2) = -(relative_C4 + relative_C3);
-        control_data_table(trial, 1) = relative_C4 - relative_C3 - hor_neutral_LR; % alternative approach 
-        control_data_table(trial, 2) = -(relative_C4 + relative_C3) - ver_neutral_LR; % alternative approach 
+        control_data_table(trial, 1) = relative_C4 - relative_C3 %- hor_neutral_LR; % alternative approach 
+        control_data_table(trial, 2) = -(relative_C4 + relative_C3) %- ver_neutral_LR; % alternative approach 
         
         % CHANGE HERE IF DIRECTION CODE IS WRONG 
         if dir == 1 % RIGHT
@@ -244,9 +247,9 @@ for dir = 1:2
         trial = UD_trials(tr); 
         eeg_control = EEG_UD.data(:, trial_data_UD.FeedbackStart(trial):trial_data_UD.FeedbackEnd(trial));
         C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:));
-        C3_control_alpha = bandpower(C3_data_control, sampling_rate, [8 12]); 
-        C4_control_alpha = bandpower(C4_data_control, sampling_rate, [8 12]); 
+        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:)); 
+        C3_control_alpha = bandpower(C3_data_control, sampling_rate, alphaband_definition); 
+        C4_control_alpha = bandpower(C4_data_control, sampling_rate, alphaband_definition); 
         
         %relative_C3 = C3_control_alpha - C3_neutral_alpha_UD; 
         %relative_C4 = C4_control_alpha - C4_neutral_alpha_UD; 
@@ -255,8 +258,8 @@ for dir = 1:2
         
         %control_data_table(trial, 1) = relative_C4 - relative_C3; 
         %control_data_table(trial, 2) = -(relative_C4 + relative_C3);
-        control_data_table(trial, 1) = relative_C4 - relative_C3 - hor_neutral_UD; % alternative approach 
-        control_data_table(trial, 2) = -(relative_C4 + relative_C3) - ver_neutral_UD; % alternative approach 
+        control_data_table(trial, 1) = relative_C4 - relative_C3 %- hor_neutral_UD; % alternative approach 
+        control_data_table(trial, 2) = -(relative_C4 + relative_C3) %- ver_neutral_UD; % alternative approach 
         
         % CHANGE HERE IF DIRECTION CODE IS WRONG 
         if dir == 1 % UP
@@ -313,6 +316,7 @@ dr = [1 0];
 du = [0 1]; 
 dd = [0 -1]; 
     
+% Rotation #1 (original concept)
 la = atan2d(det([cl', dl']), dot(cl', dl'));
 ra = atan2d(det([cr', dr']), dot(cr', dr')); 
 ua = atan2d(det([cu', du']), dot(cu', du'));
@@ -325,17 +329,32 @@ R = [cosd(theta), -sind(theta); sind(theta), cosd(theta)]; % rotation matrix
 R_LR = [cosd(theta_LR), -sind(theta_LR); sind(theta_LR), cosd(theta_LR)]; 
 R_DU = [cosd(theta_DU), -sind(theta_DU); sind(theta_DU), cosd(theta_DU)]; 
 
-cl_new = R_LR * cl';
-cr_new = R_LR * cr'; 
-cd_new = R_DU * cd'; 
-cu_new = R_DU * cu'; 
+cl_new = (R_LR * cl')';
+cr_new = (R_LR * cr')'; 
+cd_new = (R_DU * cd')'; 
+cu_new = (R_DU * cu')'; 
+
+% Rotation #2 (The Balance) - translation into weights not implemented yet
+la2 = atan2d(det([cl_new', dl']), dot(cl_new', dl'));
+ra2 = atan2d(det([cr_new', dr']), dot(cr_new', dr')); 
+ua2 = atan2d(det([cu_new', du']), dot(cu_new', du'));
+da2 = atan2d(det([cd_new', dd']), dot(cd_new', dd')); 
+theta_LD = mean([la2, da2]); 
+theta_RU = mean([ra2, ua2]); 
+R_LD = [cosd(theta_LD), -sind(theta_LD); sind(theta_LD), cosd(theta_LD)]; 
+R_RU = [cosd(theta_RU), -sind(theta_RU); sind(theta_RU), cosd(theta_RU)]; 
+
+cl_final = R_LD * cl_new';
+cr_final = R_RU * cr_new'; 
+cd_final = R_LD * cd_new'; 
+cu_final = R_RU * cu_new'; 
 
 % Add the number weights calculation and return those as well! 
 x_weights = [cosd(theta_LR) + sind(theta_LR), sind(theta_LR) - cosd(theta_LR)]; % [C4, C3]
 y_weights = [sind(theta_DU) - cosd(theta_DU), -cosd(theta_DU) - sind(theta_DU)]; % [C4, C3]
 
 figure;
-subplot(1, 2, 1); title('Before correction'); 
+subplot(1, 3, 1); title('Before correction'); 
 xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
 p1 = plot([0, cr(1)], [0, cr(2)]); 
 p2 = plot([0, cu(1)], [0, cu(2)]); 
@@ -344,7 +363,7 @@ p4 = plot([0, cd(1)], [0, cd(2)]);
 px = xline(0, '--'); py = yline(0, '--');
 legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
 
-subplot(1, 2, 2); title('After correction'); 
+subplot(1, 3, 2); title('Intermediate correction'); 
 xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
 p1 = plot([0, cr_new(1)], [0, cr_new(2)]); 
 p2 = plot([0, cu_new(1)], [0, cu_new(2)]); 
@@ -353,3 +372,11 @@ p4 = plot([0, cd_new(1)], [0, cd_new(2)]);
 px = xline(0, '--'); py = yline(0, '--');
 legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
 
+subplot(1, 3, 3); title('After correction'); 
+xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
+p1 = plot([0, cr_final(1)], [0, cr_final(2)]); 
+p2 = plot([0, cu_final(1)], [0, cu_final(2)]); 
+p3 = plot([0, cl_final(1)], [0, cl_final(2)]); 
+p4 = plot([0, cd_final(1)], [0, cd_final(2)]); 
+px = xline(0, '--'); py = yline(0, '--');
+legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
