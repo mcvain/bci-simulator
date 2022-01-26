@@ -34,12 +34,12 @@ C3 = 7; C3_laplacians = [3, 6, 8, 11];
 C4 = 9; C4_laplacians = [5, 8, 10, 13];
 
 % Input dataset from calibration task. 
-%[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220125');
-%[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220125');
+[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\BCI2000\BCI2000 v3.6.beta.R5711\BCI2000.x64\parms\shin_test\HS_20220126');
+[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\BCI2000\BCI2000 v3.6.beta.R5711\BCI2000.x64\parms\shin_test\HS_20220126');
 %[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
 %[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
-[EEG_LR, command] = pop_loadset('DF_20211105_LR.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
-[EEG_UD, command] = pop_loadset('DF_20211105_UD.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
+%[EEG_LR, command] = pop_loadset('DF_20211105_LR.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
+%[EEG_UD, command] = pop_loadset('DF_20211105_UD.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
 
 %% Processing 
 dataset = {EEG_LR, EEG_UD};
