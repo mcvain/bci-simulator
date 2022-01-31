@@ -22,7 +22,8 @@ eeglab;
 
 % Parameters 
 sampling_rate = 250; 
-baseline_method = 3;
+%baseline_method = 3;
+rotation_mode = 2; 
 timeout_trial_weight = 1; 
 alphaband_definition = [8 13];
 notch_filter = designfilt('bandstopiir','FilterOrder',2, ...
@@ -32,14 +33,15 @@ notch_filter = designfilt('bandstopiir','FilterOrder',2, ...
 % Define channels from BCI2000
 C3 = 7; C3_laplacians = [3, 6, 8, 11];
 C4 = 9; C4_laplacians = [5, 8, 10, 13];
+laplacians_weight = 0.25; 
 
 % Input dataset from calibration task. 
-[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\BCI2000\BCI2000 v3.6.beta.R5711\BCI2000.x64\parms\shin_test\HS_20220126');
-[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\BCI2000\BCI2000 v3.6.beta.R5711\BCI2000.x64\parms\shin_test\HS_20220126');
+%[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220126');
+%[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220126');
 %[EEG_LR, command] = pop_loadset('LR_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
 %[EEG_UD, command] = pop_loadset('UD_merged.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\HS_20220120');
-%[EEG_LR, command] = pop_loadset('DF_20211105_LR.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
-%[EEG_UD, command] = pop_loadset('DF_20211105_UD.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
+[EEG_LR, command] = pop_loadset('DF_20211105_LR.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
+[EEG_UD, command] = pop_loadset('DF_20211105_UD.set', 'C:\Users\mcvai\OneDrive\Desktop\BCI\BCI Rotation Experiments\DF_20211105_eeglabdata');
 
 %% Processing 
 dataset = {EEG_LR, EEG_UD};
@@ -179,8 +181,8 @@ for dir = 1:2
     for tr = 1:length(LR_neutral_trials) 
         trial = LR_neutral_trials(tr); 
         eeg_control = EEG_UD.data(:, trial_data_UD.FeedbackStart(trial):trial_data_UD.FeedbackEnd(trial));
-        C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:)); 
+        C3_data_control = double(eeg_control(C3,:) - laplacians_weight * eeg_control(C3_laplacians(1),:) - laplacians_weight * eeg_control(C3_laplacians(2),:) - laplacians_weight * eeg_control(C3_laplacians(3),:) - laplacians_weight * eeg_control(C3_laplacians(4),:));
+        C4_data_control = double(eeg_control(C4,:) - laplacians_weight * eeg_control(C4_laplacians(1),:) - laplacians_weight * eeg_control(C4_laplacians(2),:) - laplacians_weight * eeg_control(C4_laplacians(3),:) - laplacians_weight * eeg_control(C4_laplacians(4),:)); 
         C3_data_control = filtfilt(notch_filter, C3_data_control);
         C4_data_control = filtfilt(notch_filter, C4_data_control); 
         C3_data_control = highpass(C3_data_control, 2, sampling_rate); 
@@ -204,8 +206,8 @@ for dir = 1:2
     for tr = 1:length(UD_neutral_trials) 
         trial = UD_neutral_trials(tr); 
         eeg_control = EEG_LR.data(:, trial_data_LR.FeedbackStart(trial):trial_data_LR.FeedbackEnd(trial));
-        C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:));
+        C3_data_control = double(eeg_control(C3,:) - laplacians_weight * eeg_control(C3_laplacians(1),:) - laplacians_weight * eeg_control(C3_laplacians(2),:) - laplacians_weight * eeg_control(C3_laplacians(3),:) - laplacians_weight * eeg_control(C3_laplacians(4),:));
+        C4_data_control = double(eeg_control(C4,:) - laplacians_weight * eeg_control(C4_laplacians(1),:) - laplacians_weight * eeg_control(C4_laplacians(2),:) - laplacians_weight * eeg_control(C4_laplacians(3),:) - laplacians_weight * eeg_control(C4_laplacians(4),:));
         C3_data_control = filtfilt(notch_filter, C3_data_control);
         C4_data_control = filtfilt(notch_filter, C4_data_control);
         C3_data_control = highpass(C3_data_control, 2, sampling_rate); 
@@ -228,8 +230,8 @@ for dir = 1:2
     for tr = 1:length(LR_trials)
         trial = LR_trials(tr); 
         eeg_control = EEG_LR.data(:, trial_data_LR.FeedbackStart(trial):trial_data_LR.FeedbackEnd(trial));
-        C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:)); 
+        C3_data_control = double(eeg_control(C3,:) - laplacians_weight * eeg_control(C3_laplacians(1),:) - laplacians_weight * eeg_control(C3_laplacians(2),:) - laplacians_weight * eeg_control(C3_laplacians(3),:) - laplacians_weight * eeg_control(C3_laplacians(4),:));
+        C4_data_control = double(eeg_control(C4,:) - laplacians_weight * eeg_control(C4_laplacians(1),:) - laplacians_weight * eeg_control(C4_laplacians(2),:) - laplacians_weight * eeg_control(C4_laplacians(3),:) - laplacians_weight * eeg_control(C4_laplacians(4),:)); 
         C3_data_control = filtfilt(notch_filter, C3_data_control);
         C4_data_control = filtfilt(notch_filter, C4_data_control);
         C3_data_control = highpass(C3_data_control, 2, sampling_rate); 
@@ -271,8 +273,8 @@ for dir = 1:2
     for tr = 1:length(UD_trials)
         trial = UD_trials(tr); 
         eeg_control = EEG_UD.data(:, trial_data_UD.FeedbackStart(trial):trial_data_UD.FeedbackEnd(trial));
-        C3_data_control = double(eeg_control(C3,:) - 0.25 * eeg_control(C3_laplacians(1),:) - 0.25 * eeg_control(C3_laplacians(2),:) - 0.25 * eeg_control(C3_laplacians(3),:) - 0.25 * eeg_control(C3_laplacians(4),:));
-        C4_data_control = double(eeg_control(C4,:) - 0.25 * eeg_control(C4_laplacians(1),:) - 0.25 * eeg_control(C4_laplacians(2),:) - 0.25 * eeg_control(C4_laplacians(3),:) - 0.25 * eeg_control(C4_laplacians(4),:)); 
+        C3_data_control = double(eeg_control(C3,:) - laplacians_weight * eeg_control(C3_laplacians(1),:) - laplacians_weight * eeg_control(C3_laplacians(2),:) - laplacians_weight * eeg_control(C3_laplacians(3),:) - laplacians_weight * eeg_control(C3_laplacians(4),:));
+        C4_data_control = double(eeg_control(C4,:) - laplacians_weight * eeg_control(C4_laplacians(1),:) - laplacians_weight * eeg_control(C4_laplacians(2),:) - laplacians_weight * eeg_control(C4_laplacians(3),:) - laplacians_weight * eeg_control(C4_laplacians(4),:)); 
         C3_data_control = filtfilt(notch_filter, C3_data_control);
         C4_data_control = filtfilt(notch_filter, C4_data_control);
         C3_data_control = highpass(C3_data_control, 2, sampling_rate); 
@@ -346,15 +348,27 @@ dl = [-1 0];
 dr = [1 0]; 
 du = [0 1]; 
 dd = [0 -1]; 
-    
-% Rotation #1 (original concept)
+
 la = atan2d(det([cl', dl']), dot(cl', dl'));
 ra = atan2d(det([cr', dr']), dot(cr', dr')); 
 ua = atan2d(det([cu', du']), dot(cu', du'));
 da = atan2d(det([cd', dd']), dot(cd', dd'));
+
+% Rotation type 1 (original concept)
+if rotation_mode == 1
+
 theta = mean([la, ra, ua, da]); 
 theta_LR = mean([la, ra]); 
 theta_DU = mean([ua, da]); 
+
+
+% Rotation type 2 (use only one angle in each axis... pick the smaller one?) 
+elseif rotation_mode == 2
+
+theta = mean([la, ra, ua, da]); 
+theta_LR = min([la, ra]); 
+theta_DU = min([ua, da]); 
+end
 
 R = [cosd(theta), -sind(theta); sind(theta), cosd(theta)]; % rotation matrix
 R_LR = [cosd(theta_LR), -sind(theta_LR); sind(theta_LR), cosd(theta_LR)]; 
@@ -363,29 +377,30 @@ R_DU = [cosd(theta_DU), -sind(theta_DU); sind(theta_DU), cosd(theta_DU)];
 cl_new = (R_LR * cl')';
 cr_new = (R_LR * cr')'; 
 cd_new = (R_DU * cd')'; 
-cu_new = (R_DU * cu')'; 
+cu_new = (R_DU * cu')';
 
-% Rotation #2 (The Balance) - translation into weights not implemented yet
-la2 = atan2d(det([cl_new', dl']), dot(cl_new', dl'));
-ra2 = atan2d(det([cr_new', dr']), dot(cr_new', dr')); 
-ua2 = atan2d(det([cu_new', du']), dot(cu_new', du'));
-da2 = atan2d(det([cd_new', dd']), dot(cd_new', dd')); 
-theta_LD = mean([la2, da2]); 
-theta_RU = mean([ra2, ua2]); 
-R_LD = [cosd(theta_LD), -sind(theta_LD); sind(theta_LD), cosd(theta_LD)]; 
-R_RU = [cosd(theta_RU), -sind(theta_RU); sind(theta_RU), cosd(theta_RU)]; 
+% % Rotation idea (The Balance, meant to happen after type 1) - translation into weights not implemented yet
+% la2 = atan2d(det([cl_new', dl']), dot(cl_new', dl'));
+% ra2 = atan2d(det([cr_new', dr']), dot(cr_new', dr')); 
+% ua2 = atan2d(det([cu_new', du']), dot(cu_new', du'));
+% da2 = atan2d(det([cd_new', dd']), dot(cd_new', dd')); 
+% theta_LD = mean([la2, da2]); 
+% theta_RU = mean([ra2, ua2]); 
+% R_LD = [cosd(theta_LD), -sind(theta_LD); sind(theta_LD), cosd(theta_LD)]; 
+% R_RU = [cosd(theta_RU), -sind(theta_RU); sind(theta_RU), cosd(theta_RU)]; 
+% 
+% cl_final = R_LD * cl_new';
+% cr_final = R_RU * cr_new'; 
+% cd_final = R_LD * cd_new'; 
+% cu_final = R_RU * cu_new'; 
 
-cl_final = R_LD * cl_new';
-cr_final = R_RU * cr_new'; 
-cd_final = R_LD * cd_new'; 
-cu_final = R_RU * cu_new'; 
-
-% Add the number weights calculation and return those as well! 
+% % Add the number weights calculation and return those as well! 
 x_weights = [cosd(theta_LR) + sind(theta_LR), sind(theta_LR) - cosd(theta_LR)]; % [C4, C3]
 y_weights = [sind(theta_DU) - cosd(theta_DU), -cosd(theta_DU) - sind(theta_DU)]; % [C4, C3]
 
+%% Visualization 
 figure;
-subplot(1, 3, 1); title('Before correction'); 
+subplot(1, 2, 1); title('Before correction'); 
 xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
 p1 = plot([0, cr(1)], [0, cr(2)]); 
 p2 = plot([0, cu(1)], [0, cu(2)]); 
@@ -394,7 +409,7 @@ p4 = plot([0, cd(1)], [0, cd(2)]);
 px = xline(0, '--'); py = yline(0, '--');
 legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
 
-subplot(1, 3, 2); title('Intermediate correction'); 
+subplot(1, 2, 2); title('After correction'); 
 xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
 p1 = plot([0, cr_new(1)], [0, cr_new(2)]); 
 p2 = plot([0, cu_new(1)], [0, cu_new(2)]); 
@@ -403,14 +418,14 @@ p4 = plot([0, cd_new(1)], [0, cd_new(2)]);
 px = xline(0, '--'); py = yline(0, '--');
 legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
 
-subplot(1, 3, 3); title('After correction'); 
-xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
-p1 = plot([0, cr_final(1)], [0, cr_final(2)]); 
-p2 = plot([0, cu_final(1)], [0, cu_final(2)]); 
-p3 = plot([0, cl_final(1)], [0, cl_final(2)]); 
-p4 = plot([0, cd_final(1)], [0, cd_final(2)]); 
-px = xline(0, '--'); py = yline(0, '--');
-legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
+% subplot(1, 3, 3); title('After correction (modified)'); 
+% xlim([-1 1]); ylim([-1 1]); set(gcf, 'Position',  [100, 100, 1200, 400]); hold on;
+% p1 = plot([0, cr_final(1)], [0, cr_final(2)]); 
+% p2 = plot([0, cu_final(1)], [0, cu_final(2)]); 
+% p3 = plot([0, cl_final(1)], [0, cl_final(2)]); 
+% p4 = plot([0, cd_final(1)], [0, cd_final(2)]); 
+% px = xline(0, '--'); py = yline(0, '--');
+% legend([p1,p2,p3,p4], {'right', 'up', 'left', 'down'}); 
 
 
 function pwr = shin_bandpower(eeg_time_series, fs, alphaband_definition)
