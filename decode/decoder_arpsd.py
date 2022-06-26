@@ -1,12 +1,11 @@
-from spectrum import aryule, Periodogram, arma2psd, arburg, pyule
+from spectrum import arma2psd, arburg
 from pylab import log10, pi
 from math import floor, ceil, isnan
 import numpy as np
 
 
-def decoder_arpsd(eeg, x_control_buffer, y_control_buffer, normalize_mode):
+def decoder_arpsd(eeg, bufferLength, x_control_buffer, y_control_buffer, normalize_mode):
     modelOrder = 16
-    bufferLength = 900
     spectralDensity_output_Burg = []
     for i in range(0, len(eeg.columns)):
         # channel = str(i)
@@ -19,26 +18,19 @@ def decoder_arpsd(eeg, x_control_buffer, y_control_buffer, normalize_mode):
         spectralDensity_output_Burg.append(np.mean(spectralDensity_Burg))  # alpha power
 
     if normalize_mode == 0:  # operate then normalize
-        # y_control_raw_unrotated = - spectralDensity_output_Burg[0] - spectralDensity_output_Burg[1]  # -C4 -C3
-        # x_control_raw_unrotated = spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]  # C4 - C3
-
-        # Corrected
-        # x_control_raw = 0.4251 * spectralDensity_output_Burg[1] + (-1.3488) * spectralDensity_output_Burg[0]
-        # y_control_raw = -1.2934 * spectralDensity_output_Burg[1] - 0.5720 * spectralDensity_output_Burg[0]
-
         # Uncorrected
         x_control_raw = spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]
         y_control_raw = - spectralDensity_output_Burg[1] - spectralDensity_output_Burg[0]
-
-        # Save into buffer for time-history
-        x_control_buffer.append(x_control_raw)
-        y_control_buffer.append(y_control_raw)  # corrected into time history is closer to BCI2000 behavior.(10/30/2021)
 
         # How long should the buffer length be?
         x_control = (x_control_raw - np.mean(x_control_buffer[-bufferLength:])) / (
             np.std(x_control_buffer[-bufferLength:]))
         y_control = (y_control_raw - np.mean(y_control_buffer[-bufferLength:])) / (
             np.std(y_control_buffer[-bufferLength:]))
+
+        # Save into buffer for time-history
+        x_control_buffer.append(x_control_raw)
+        y_control_buffer.append(y_control_raw)  # corrected into time history is closer to BCI2000 behavior.(10/30/2021)
 
         d = 0.3
 

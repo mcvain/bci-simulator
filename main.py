@@ -1,103 +1,116 @@
-import pygame, pygame.gfxdraw, pygame.font, random, math, os
+# Closed-loop brain-computer interface simulator
+# Hyonyoung Shin
+# Feb 2022
+
+from ui.get_params import *
+from eeg.signal_source import *
+from eeg.velocity_mapping import *
+from decode.spatial_filter import *
+from decode.decoder_arpsd import *
+import pygame, pygame.gfxdraw, pygame.font, random, os, ctypes, tkinter, sys
+from pygame.locals import *
+from tkinter import messagebox
 from datetime import datetime
+from scipy import io
 import numpy as np
 import pandas as pd
-import time
-from itertools import compress
-from tkinter import simpledialog, filedialog
-from pygame.locals import *
-from matplotlib import pyplot as plt
 
-from ui import GetParams
-from eeg import VelocityMapping, SourceSignals
-from task import Targets
-from encryption.encrypt_data import encrypt_data
-from decode.decoder_arpsd import decoder_arpsd
-from decode.spatial_filter import spatial_filter
-
-params = GetParams.user_input()
-# params = GetParams.dev_input()  # uncomment to skip user-interface
+score = 0
+eeg_output_for_vis = np.empty([33, 1])  # 32 channels being generated. + 1 channel containing targetcode
+params = launcher("subj")
 
 max_target_velocity = params['max_target_velocity']
 max_cursor_velocity = params['max_cursor_velocity']
-trialLength = params['trialLength']
-trialCount = params['trialCount']
-visualization_mode = params['visualization_mode']
-summary_visualization_mode = params['summary_visualization_mode']
+trial_length = params['trial_length']
+target_count = params['trial_count']
 normalize_mode = params['normalize_mode']
-velocity_gain = params['velocity_gain']
 game_mode = params['game_mode']
 leadfield_mode = params['leadfield_mode']
-experiment_mode = params['experiment_mode']
 target_physics_mode = params['target_physics_mode']
+save_file_directory = params['save_file_directory']
+experimental_param_array = params['experimental_param_array']
+run_count = params['run_count']
 
-os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (515, 100)
+if save_file_directory.get() == "":
+    # This code is to hide the main tkinter window
+    root = tkinter.Tk()
+    root.attributes('-topmost', 1)
+    root.withdraw()
+
+    # Message Box
+    tkinter.messagebox.showinfo("Warning", "You did not specify a save file directory, or the directory is inaccessible. Please restart the program!")
+
+    root.deiconify()
+    root.attributes("-topmost", True)
+    sys.exit()
+
+experimental_param_array = experimental_param_array.split(" ")
+# BinWidth_array = []; CarryOn_array = [];  CursorSpeed_array = []
+# for i in experimental_param_array:
+#     if i.startswith("BW"):
+#         BinWidth_array.append(int(i.split("BW")[1]))
+# for i in experimental_param_array:
+#     if i.startswith("CO"):
+#         CarryOn_array.append(int(i.split("CO")[1]))
+# for i in experimental_param_array:
+#     if i.startswith("CS"):
+#         CursorSpeed_array.append(int(i.split("CS")[1]))
+
+full_screen_mode = True
+os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (515, 100)  # location of window
 pygame.init()
-test_mode = False
-frames = 0
-wait_frames = 0
 myfont = pygame.font.SysFont('Calibri', 20)
 textsurface = myfont.render('Waiting for next trial...', False, (0, 0, 0))
-textsurface_calibration = myfont.render('Waiting for calibration trial...', False, (0, 0, 0))
-textsurface_calibration_new = myfont.render('Calibration trial ready.', False, (0, 0, 0))
 textsurface_new = myfont.render('Next trial ready.', False, (0, 0, 0))
 textsurface2_new = myfont.render('Please return mouse to center of desk and press the spacebar when ready to start.', False, (0, 0, 0))
-score = 0
 
 # Set-up the screen
-screen_width = Targets.screen_width
-screen_height = Targets.screen_height
+screen_width = 800
+screen_height = 800
 
-flags = FULLSCREEN | HWSURFACE | HWACCEL | DOUBLEBUF
-import ctypes
+if full_screen_mode:
+    flags = FULLSCREEN | HWSURFACE | HWACCEL | DOUBLEBUF
+else:
+    flags = HWSURFACE | HWACCEL | DOUBLEBUF
+
 ctypes.windll.user32.SetProcessDPIAware()
 # true_res = (ctypes.windll.user32.GetSystemMetrics(0),ctypes.windll.user32.GetSystemMetrics(1))
-screen = pygame.display.set_mode((screen_width, screen_height))
-# screen = pygame.display.set_mode((screen_width, screen_height), flags)
+screen = pygame.display.set_mode((screen_width, screen_height), flags)
 screen.set_alpha(None)
-target_loc = "left"
-target_width = 25
-target_height = 700
 
 # Set-up the sprites
 playerSprite = pygame.sprite.Group()
-targetSprite = pygame.sprite.Group()  # list of target sprites
 chosenTarget = pygame.sprite.GroupSingle()
+wrongTarget = pygame.sprite.GroupSingle()
 playerStepCapturerSprite = pygame.sprite.GroupSingle()
 playerStepModulatorSprite = pygame.sprite.GroupSingle()
 
-# Initialize control variables
-x_control_buffer = []; y_control_buffer = []
-# vis_xcontrol_b4_dwell = []; vis_ycontrol_b4_dwell = []
-# vis_xcontrol_dwell = []; vis_ycontrol_dwell = []
-# vis_vnorms_b4_cap = []; vis_vnorms_capped = []
-# vis_dwell_class_over_time_x = []; vis_dwell_class_over_time_y = []
-# vis_optimal_over_time = []
-tvcv_order = []
-reps_per_velocity_limit_ratio = 3
-
-# Initialize container for saved trajectories
-playerPath = []
-targetPath = []
-vis_true_x_over_time = []; vis_true_y_over_time = []
+# Initialize data to be saved
+player_path_x = [[[] for tr in range(target_count)] for run in range(run_count)]
+player_path_y = [[[] for tr in range(target_count)] for run in range(run_count)]
+true_vel_x = [[[] for tr in range(target_count)] for run in range(run_count)]
+true_vel_y = [[[] for tr in range(target_count)] for run in range(run_count)]
+correct_targets = [[[] for tr in range(target_count)] for run in range(run_count)]
+input_targets = [[[] for tr in range(target_count)] for run in range(run_count)]
+datetimes = [[[] for tr in range(target_count)] for run in range(run_count)]
 
 # Atlas and leadfield configuration
-SourceSignals.import_lf_within_source_signals(leadfield_mode)
+import_lf_within_source_signals(leadfield_mode)
 
 # Import atlas
 if leadfield_mode == 'sereega':
-    M1_left, M1_right = SourceSignals.import_atlas('data/atlas/brodmann_area_def.mat', 'SEREEGA')
+    M1_left, M1_right = import_atlas('data/atlas/brodmann_area_def.mat', 'SEREEGA')
 elif leadfield_mode == 'brainstorm':
-    M1_left, M1_right = SourceSignals.import_atlas('data/atlas/brainnetome_area_def.mat', 'brainstorm')
+    M1_left, M1_right = import_atlas('data/atlas/brainnetome_area_def.mat', 'brainstorm')
 
 # Epoch configuration
-srate, epochLength, samples = SourceSignals.epoch_config(srate=512, epochLength=200)
+srate, epochLength, samples = epoch_config(srate=512, epochLength=33)
 
 # Import leadfield
 if leadfield_mode == 'sereega':
-    leadfield, lf, orientation, pos, chanlocs = SourceSignals.import_leadfield('data/leadfield/32_channel_nyhead_lf.mat', 'sereega')
+    leadfield, lf, orientation, pos, chanlocs = import_leadfield('data/leadfield/32_channel_nyhead_lf.mat', 'sereega')
 elif leadfield_mode == 'brainstorm':
-    leadfield, lf, orientation, pos, chanlocs = SourceSignals.import_leadfield('data/leadfield/openmeeg_fsaverage_lf.mat', 'brainstorm')
+    leadfield, lf, orientation, pos, chanlocs = import_leadfield('data/leadfield/openmeeg_fsaverage_lf.mat', 'brainstorm')
 
 # Import channel labels and choose channels for spatial Laplacian filter
 channel_labels = []
@@ -117,29 +130,120 @@ for i in C3_index:
 for i in C4_index:
     channelSelection[1][i] = 1
 
-# Prepare background signal
-noise = SourceSignals.generate_noise_signal('brown-unif', 5.0)
+# Prepare background noise signal
+noise = generate_noise_signal('brown-unif', 5.0)
 
 # Prepare background/resting components
 if leadfield_mode == 'sereega':
-    component_list_background = SourceSignals.create_component('random', 100, noise, component_list=[], absolute_mode=False, mode='sereega')
+    component_list_background = create_component('random', 500, noise, component_list=[], absolute_mode=False, mode='sereega')
 elif leadfield_mode == 'brainstorm':
-    component_list_background = SourceSignals.create_component('random', 100, noise, component_list=[], absolute_mode=False, mode='brainstorm')
+    component_list_background = create_component('random', 500, noise, component_list=[], absolute_mode=False, mode='brainstorm')
 
 # Sigmoid function parameter
 Amin = 0.01
 
 pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN])
 
+# Global experiment progress tracking variables.
+run_no = 0
+target_no = 0
+
+max_feedback_period = int(6*30)  # 6s (BCI2000) -> 6*30 frames.
+
+
+class ActiveTarget(pygame.sprite.Sprite):
+    def __init__(self, dir):
+        pygame.sprite.Sprite.__init__(self)
+        self.dir = dir
+
+        if self.dir == 'up' or self.dir == 'down':
+            self.target_width = 700
+            self.target_height = 25
+        elif self.dir == 'left' or self.dir == 'right':
+            self.target_width = 25
+            self.target_height = 700
+
+        self.image = pygame.Surface((self.target_width, self.target_height))
+        self.image.fill((255, 255, 255))
+
+        self.rect = self.image.get_rect()
+
+    def update(self, frames, run_no, target_no):
+        global screen_width, screen_height
+
+        if self.dir == 'up':
+            self.target_width = 700
+            self.target_height = 25
+            self.rect.x = (screen_width - self.target_width) // 2
+            self.rect.y = 25
+        elif self.dir == 'down':
+            self.target_width = 700
+            self.target_height = 25
+            self.rect.x = (screen_width - self.target_width) // 2
+            self.rect.y = screen_height - 50
+        elif self.dir == 'left':
+            self.target_width = 25
+            self.target_height = 700
+            self.rect.x = 25
+            self.rect.y = (screen_height - self.target_height) // 2
+        elif self.dir == 'right':
+            self.target_width = 25
+            self.target_height = 700
+            self.rect.x = screen_width - 50
+            self.rect.y = (screen_height - self.target_height) // 2
+
+        pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)
+
+
+class InactiveTarget(pygame.sprite.Sprite):
+    def __init__(self, dir):
+        pygame.sprite.Sprite.__init__(self)
+        self.dir = dir
+
+        if self.dir == 'up' or self.dir == 'down':
+            self.target_width = 700
+            self.target_height = 25
+        elif self.dir == 'left' or self.dir == 'right':
+            self.target_width = 25
+            self.target_height = 700
+
+        self.image = pygame.Surface((self.target_width, self.target_height))
+        self.image.fill((255, 255, 255))
+
+        self.rect = self.image.get_rect()
+
+    def update(self, frames, run_no, target_no):
+        global score, screen_width, screen_height
+
+        if self.dir == 'up':
+            self.target_width = 700
+            self.target_height = 25
+            self.rect.x = (screen_width - self.target_width) // 2
+            self.rect.y = 25
+        elif self.dir == 'down':
+            self.target_width = 700
+            self.target_height = 25
+            self.rect.x = (screen_width - self.target_width) // 2
+            self.rect.y = screen_height - 50
+        elif self.dir == 'left':
+            self.target_width = 25
+            self.target_height = 700
+            self.rect.x = 25
+            self.rect.y = (screen_height - self.target_height) // 2
+        elif self.dir == 'right':
+            self.target_width = 25
+            self.target_height = 700
+            self.rect.x = screen_width - 50
+            self.rect.y = (screen_height - self.target_height) // 2
+
+        # pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)  # hide drawing for inactive!
+
 
 class PlayerStepCapturer(pygame.sprite.Sprite):
-    """
-    This is the hidden player character that exists to track relative velocity movement.
-    """
     def __init__(self):
         global screen_width, screen_height
         pygame.sprite.Sprite.__init__(self)
-        self.radius = 25
+        self.radius = int(screen_width * 0.1 * 0.5)  # 10% of screen width (BCI2000), halved because radius.
 
         self.image = pygame.Surface((self.radius * 2, self.radius * 2))  # need a better way of drawing the circle
         self.image.fill((255, 255, 255))
@@ -153,7 +257,7 @@ class PlayerStepCapturer(pygame.sprite.Sprite):
         self.pos_t1 = (screen_width // 2 - self.radius, screen_height // 2 - self.radius)
         self.pos_t0 = (screen_width // 2 - self.radius, screen_height // 2 - self.radius)
 
-    def update(self):
+    def update(self, frames, run_no, target_no, true_vel_x, true_vel_y):
         self.pos_t1 = pygame.mouse.get_pos()
 
         step_velocity_vector = (self.pos_t1[0] - self.pos_t0[0], self.pos_t1[1] - self.pos_t0[1])
@@ -161,57 +265,22 @@ class PlayerStepCapturer(pygame.sprite.Sprite):
         self.rect.x = self.pos_t1[0]
         self.rect.y = self.pos_t1[1]
 
-        # Reset back to midpoint
-        # pygame.mouse.set_pos((screen_width // 2 - self.radius, screen_height // 2 - self.radius))
-        self.pos_t1 = (screen_width // 2 - self.radius, screen_height // 2 - self.radius)
+        self.pos_t1 = (screen_width // 2 - self.radius, screen_height // 2 - self.radius) # reset back to midpoint
         pygame.mouse.set_pos(self.pos_t1)
-        return step_velocity_vector  # This velocity will be passed on to gain modulation
+
+        true_vel_x[run_no][target_no].append(step_velocity_vector[0])
+        true_vel_y[run_no][target_no].append(step_velocity_vector[1])
+
+        return step_velocity_vector, true_vel_x, true_vel_y
 
 
-class PlayerStepModulator(pygame.sprite.Sprite):
-    """
-        This character will move with a velocity vector measured by the PlayerStepCapturer, but shortened.
-    """
+class PlayerCursor(pygame.sprite.Sprite):
     def __init__(self):
+        # global max_cursor_velocity
+        global run_no, experimental_param_array
         pygame.sprite.Sprite.__init__(self)
-        global velocity_gain
-        self.radius = 25
 
-        self.velocity_gain = velocity_gain
-
-        self.image = pygame.Surface((self.radius * 2, self.radius * 2))  # need a better way of drawing the circle
-        self.image.fill((255, 255, 255))
-        self.image.set_colorkey((255, 255, 255))
-
-        # pygame.draw.circle(self.image, (0, 0, 0), [self.radius, self.radius], self.radius)
-        self.rect = self.image.get_rect()
-
-        self.rect.x = screen_width // 2 - self.radius
-        self.rect.y = screen_height // 2 - self.radius
-
-        # build position tracker since rect does not support float mathematics.
-        self.current_pos = [float(self.rect.x), float(self.rect.y)]
-
-    def update(self, v1):
-        modulated_v = (v1[0] * self.velocity_gain, v1[1] * self.velocity_gain)
-        # modulated_v will be the input to the decoder.
-
-        self.current_pos += modulated_v
-
-        self.rect.x = int(self.current_pos[0])
-        self.rect.y = int(self.current_pos[1])
-
-        return modulated_v, self.velocity_gain
-
-
-class Player(pygame.sprite.Sprite):
-    """
-    This is the player character that shows the decoded position.
-    """
-    def __init__(self, currentTrial):
-        global playerPath, trialLength, playerPathTrial, Amin, max_cursor_velocity, visualization_mode
-        pygame.sprite.Sprite.__init__(self)
-        self.radius = 20
+        self.radius = int(screen_width * 0.1 * 0.5)
         self.edge_threshold = 0.01
         self.image = pygame.Surface((self.radius * 2, self.radius * 2))  # need a better way of drawing the circle
         self.image.fill((255, 255, 255))
@@ -223,326 +292,178 @@ class Player(pygame.sprite.Sprite):
         self.rect.x = screen_width // 2 - self.radius
         self.rect.y = screen_height // 2 - self.radius
 
-        self.playerPathTrial = np.zeros(shape=(99999, 2), dtype=np.float32)
-        self.playerVelocityTrial = np.zeros(shape=(99999, 2), dtype=np.float32)
-
         # build position tracker since rect does not support float mathematics.
         self.current_pos = [float(self.rect.x), float(self.rect.y)]
 
-        self.m = 280
         self.v = pygame.Vector2()
         self.v.xy = 0.0001, 0.0001  # Avoid division by zero
+        self.gain = 5  # gain of the sigmoid function
 
-        self.f_external = pygame.Vector2()
-        # self.f_external.xy = np.random.normal(0, 100), np.random.normal(0, 100)
+        if experimental_param_array[run_no].startswith("CS"):
+            max_cursor_velocity = int(experimental_param_array[run_no].split("CS")[1])  # in pixels/s
+            max_cursor_velocity = max_cursor_velocity / 30
+            print(max_cursor_velocity)
+            self.max_cursor_velocity = max_cursor_velocity
+        else:  # default
+            max_cursor_velocity = 5.5
+            self.max_cursor_velocity = max_cursor_velocity
 
-        self.friction_coeff = 20
-        self.f_friction = pygame.Vector2()
-        self.drag_coeff = 0.4
-        self.f_drag = pygame.Vector2()
+    def update(self, step_velocity_vector, x_control_buffer, y_control_buffer, targetcode):
+        global game_mode, eeg_output_for_vis
+        v = step_velocity_vector
+        amp_C3, amp_C4, scaling_factor = velocity_to_mod_amplitude(v[0], v[1], 'perturbed', self.gain)
 
-        self.v = pygame.Vector2()
-        self.v.xy = 0.0001, 0.0001  # Avoid division by zero
+        freqRange = [3, 5, 12, 14]
+        target_C3_x = generate_modulated_ersp(freqRange, 5, 'invburst',
+                                                            5, 20, 0.5, amp_C3)
+        target_C3_y = generate_modulated_ersp(freqRange, 5, 'invburst',
+                                                            5, 20, 0.5, amp_C3)
+        target_C4_x = generate_modulated_ersp(freqRange, 5, 'invburst',
+                                                            5, 20, 0.5, amp_C4)
+        target_C4_y = generate_modulated_ersp(freqRange, 5, 'invburst',
+                                                            5, 20, 0.5, amp_C4)
 
-        # Plotting function initialization
-        # get gain from Amin by setting v = 1 and setting gain as the subject of equation
-        # To-do: Check if sigmoid shape is fine in Amin parameter choice edge cases
-        # self.gain = (1 / (1 - 0.6)) * np.log((1 / Amin) - 1)  # for C4_x, minus sign is applied within sigmoid function
-        self.gain = 5
-        print("Calculated sigmoid function gain: " + str(self.gain))
+        # Create components
+        active_component_list = component_list_background[
+                                :]  # copy over background components, to which active components are appended.
+        for i in M1_left:
+            component = {
+                "sourceIdx": i,
+                "signal": target_C3_x,
+                "projection": lf[:, i, :],
+                "orientation": orientation[i],
+                "position": pos[i],
+            }
+            active_component_list.append(component)
+            component = {
+                "sourceIdx": i,
+                "signal": target_C3_y,
+                "projection": lf[:, i, :],
+                "orientation": orientation[i],
+                "position": pos[i],
+            }
+            active_component_list.append(component)
 
-        if currentTrial > 0 and visualization_mode:
-        # if currentTrial >= 0:
-            self.fig, self.ax, self.background, self.p, self.arrow = VelocityMapping.sigmoidfunction_plot_init(self.gain, visualization_mode)
-            self.figv, self.axv, self.backgroundv, self.vector_arrow_object, self.leg = VelocityMapping.decodedvelocity_plot_init(visualization_mode)
+        for i in M1_right:
+            component = {
+                "sourceIdx": i,
+                "signal": target_C4_x,
+                "projection": lf[:, i, :],
+                "orientation": orientation[i],
+                "position": pos[i],
+            }
+            active_component_list.append(component)
+            component = {
+                "sourceIdx": i,
+                "signal": target_C4_y,
+                "projection": lf[:, i, :],
+                "orientation": orientation[i],
+                "position": pos[i],
+            }
+            active_component_list.append(component)
 
-        self.vx_input = []; self.vy_input = []
-        self.angle_decoded_vs_true = []; self.angle_decoded_vs_optimal = []
-        self.error_decoded_vs_true = []; self.error_decoded_vs_optimal = []
-        self.latest_optimal = [0, 0]
+        print(M1_left)
+        print(M1_right)
 
-        self.max_cursor_velocity = max_cursor_velocity
+        # Generate scalp data
+        eeg = generate_scalp_data(active_component_list, sensorNoise=0.0)
+        if targetcode == 'left':
+            targetcode = 2
+        elif targetcode == 'right':
+            targetcode = 1
+        targetcodes = np.full((1, eeg.shape[1]), targetcode)
+        # print(targetcodes.shape)
+        eeg_with_targetcode = np.vstack((eeg, targetcodes))
+        # print(eeg_with_targetcode.shape)
+        eeg_output_for_vis = np.hstack((eeg_output_for_vis, eeg_with_targetcode))
+        # Spatial filtering and decoding
+        eeg_spatial_filtered = spatial_filter(eeg, channelSelection)
+        if experimental_param_array[run_no].startswith("BW"):
+            buffer_length = int(experimental_param_array[run_no].split("BW")[1])  # in seconds
+            buffer_length = buffer_length * 30  # in frames
+        else:  # default
+            buffer_length = 900  # 900 frames = 30 seconds.
 
-    def update(self, v, modulation_gain, frames):
-        global d, x_control_buffer, y_control_buffer, \
-            component_list_background, visualization_mode, vis_xcontrol_b4_dwell, vis_ycontrol_b4_dwell, \
-            vis_xcontrol_dwell, vis_ycontrol_dwell, vis_vnorms_b4_cap, vis_vnorms_capped, \
-            vis_true_x_over_time, vis_true_y_over_time
+        x_control, y_control, x_control_buffer, y_control_buffer, d = decoder_arpsd(eeg_spatial_filtered,
+                                                                                    buffer_length,
+                                                                                    x_control_buffer,
+                                                                                    y_control_buffer,
+                                                                                    normalize_mode=normalize_mode)
+        # Restore scaling to the control vectors
+        # this scaling number can shift the mean of the velocity distribution
+        x_control = x_control * scaling_factor
+        y_control = y_control * scaling_factor
 
-        if test_mode == True:
-            v = pygame.mouse.get_rel()  # if just testing, just use mouse movement
-        else:
-            # Obtain C3 and C4 amplitudes from recorded velocity
-            try:
-                self.vx_input.append(v[0]); self.vy_input.append(-v[1])
-                amp_C3, amp_C4, scaling_factor = VelocityMapping.velocity_to_mod_amplitude(v[0], -v[1], 'perturbed', self.gain, visualization_mode, fig=self.fig, ax=self.ax, background=self.background, p=self.p, arrow=self.arrow, latest_optimal=self.latest_optimal)
-            except AttributeError:  # if calibration trial:
-                amp_C3, amp_C4, scaling_factor = VelocityMapping.velocity_to_mod_amplitude(v[0], -v[1], 'perturbed', self.gain, visualization_mode)
-            except TypeError:  # catches the case where velocity is 'NoneType'
-                v = (0.0, 0.0)
-                amp_C3, amp_C4, scaling_factor = VelocityMapping.velocity_to_mod_amplitude(v[0], -v[1], 'perturbed', self.gain, visualization_mode, fig=self.fig, ax=self.ax, background=self.background, p=self.p, arrow=self.arrow, latest_optimal=self.latest_optimal)
+        # Velocity-based approach
+        self.v.xy = x_control, y_control
 
-            # Prepare signals using these amplitudes
-            # source location assignment has been moved outside the update loop
-            freqRange = [3, 5, 12, 14]
-            target_C3_x = SourceSignals.generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                             5, 20, 0.5, amp_C3)
-            target_C3_y = SourceSignals.generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                             5, 20, 0.5, amp_C3)
-            target_C4_x = SourceSignals.generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                             5, 20, 0.5, amp_C4)
-            target_C4_y = SourceSignals.generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                               5, 20, 0.5, amp_C4)
+        # Pass the velocity into screen edge collision check. (NOT target collision check)
+        if self.rect.x + self.v.x <= (screen_width - self.radius * 2) * self.edge_threshold:
+            print("hit left wall")
+            self.v.x = 0
+        elif self.rect.x + self.v.x >= (screen_width - self.radius * 2) * (1 - self.edge_threshold):
+            print("hit right wall")
+            self.v.x = 0
+        if self.rect.y + self.v.y <= (screen_height - self.radius * 2) * self.edge_threshold:
+            print("hit top wall")
+            self.v.y = 0
+        elif self.rect.y + self.v.y >= (screen_height - self.radius * 2) * (1 - self.edge_threshold):
+            print("hit bottom wall")
+            self.v.y = 0
 
-            # Create components
-            active_component_list = component_list_background[:]  # copy over background components, to which active components are appended.
+        # Threshold velocity with Cv
+        v = np.array([[self.v.x], [self.v.y]], dtype=np.float32)
+        # print("length of v before capping: " + str(np.linalg.norm(v)))
+        if np.linalg.norm(v) > self.max_cursor_velocity:
+            # print("max cursor velocity hit: " + str(self.max_cursor_velocity))
+            control_max = np.array([[self.max_cursor_velocity], [self.max_cursor_velocity]], dtype=np.float32)
+            new_v = control_max * v.transpose() / np.linalg.norm(v)
+            self.v.x = new_v[0][0]
+            self.v.y = new_v[0][1]
 
-            for i in M1_left:
-                component = {
-                    "sourceIdx": i,
-                    "signal": target_C3_x,
-                    "projection": lf[:, i, :],
-                    "orientation": orientation[i],
-                    "position": pos[i],
-                }
-                active_component_list.append(component)
-                component = {
-                    "sourceIdx": i,
-                    "signal": target_C3_y,
-                    "projection": lf[:, i, :],
-                    "orientation": orientation[i],
-                    "position": pos[i],
-                }
-                active_component_list.append(component)
+        # Finally, we have to update the position as well:
+        self.current_pos[0] += self.v.x
+        self.current_pos[1] += self.v.y
 
-            for i in M1_right:
-                component = {
-                    "sourceIdx": i,
-                    "signal": target_C4_x,
-                    "projection": lf[:, i, :],
-                    "orientation": orientation[i],
-                    "position": pos[i],
-                }
-                active_component_list.append(component)
-                component = {
-                    "sourceIdx": i,
-                    "signal": target_C4_y,
-                    "projection": lf[:, i, :],
-                    "orientation": orientation[i],
-                    "position": pos[i],
-                }
-                active_component_list.append(component)
-
-            # Generate scalp data
-            eeg = SourceSignals.generate_scalp_data(active_component_list, sensorNoise=0.0)
-
-            # Spatial filtering and decoding
-            eeg_spatial_filtered = spatial_filter(eeg, channelSelection)
-            x_control, y_control, x_control_buffer, y_control_buffer, d = decoder_arpsd(eeg_spatial_filtered, x_control_buffer, y_control_buffer, normalize_mode=1)
-
-            # Restore scaling to the control vectors
-            # this scaling number can shift the mean of the velocity distribution
-            x_control = x_control * scaling_factor * 0.25
-            y_control = y_control * scaling_factor * 0.25
-
-            if self.v.length() == 0:
-                self.v.xy = 0.000001, 0.000001
-
-            if x_control == 0:
-                x_control += 0.000001
-            if y_control == 0:
-                y_control += 0.000001
-
-            # Force-based approach
-            self.f_external.xy = x_control * self.m, y_control * self.m
-            self.f_friction = -self.friction_coeff * (self.v / self.v.length())
-            self.f_drag = -self.drag_coeff * self.v * self.v.length()
-            self.v = self.v + self.f_drag / self.m + self.f_friction / self.m + self.f_external / self.m
-
-            # Velocity-based approach - uncomment this single line (overwrites the force-based approach above)
-            self.v.xy = x_control, y_control
-
-            # Pass the velocity into edge collision check.
-            if self.rect.x + self.v.x <= (screen_width - self.radius * 2) * self.edge_threshold:
-                print("hit left wall")
-                self.v.x = 0
-            elif self.rect.x + self.v.x >= (screen_width - self.radius * 2) * (1 - self.edge_threshold):
-                print("hit right wall")
-                self.v.x = 0
-            if self.rect.y + self.v.y <= (screen_height - self.radius * 2) * self.edge_threshold:
-                print("hit top wall")
-                self.v.y = 0
-            elif self.rect.y + self.v.y >= (screen_height - self.radius * 2) * (1 - self.edge_threshold):
-                print("hit bottom wall")
-                self.v.y = 0
-
-            # Threshold velocity with Cv
-            v = np.array([[self.v.x], [self.v.y]], dtype=np.float32)
-            # print("length of v before capping: " + str(np.linalg.norm(v)))
-            if np.linalg.norm(v) > self.max_cursor_velocity:
-                # print("max cursor velocity hit: " + str(self.max_cursor_velocity))
-                control_max = np.array([[self.max_cursor_velocity], [self.max_cursor_velocity]], dtype=np.float32)
-                new_v = control_max * v.transpose() / np.linalg.norm(v)
-                self.v.x = new_v[0][0]
-                self.v.y = new_v[0][1]
-
-            # Finally, we have to update the position as well:
-            self.current_pos[0] += self.v.x
-            self.current_pos[1] += self.v.y
-
-            self.rect.x = int(self.current_pos[0])
+        self.rect.x = int(self.current_pos[0])
+        if game_mode != 'DT_1D':  # disable horizontal movement for discrete LR
             self.rect.y = int(self.current_pos[1])
 
-            self.playerPathTrial[frames] = [self.rect.x, self.rect.y]
-            self.playerVelocityTrial[frames] = [self.v.x, self.v.y]
+        player_path_x[run_no][target_no].append(self.rect.x)
+        player_path_y[run_no][target_no].append(self.rect.y)
 
-            self.frames = frames
-
-    def report_trajectory(self):
-        playerPathTrial = self.playerPathTrial[0:self.frames + 2, :]
-        playerVelocityTrial = self.playerVelocityTrial[0:self.frames + 2, :]
-        return playerPathTrial, playerVelocityTrial
-
-    def plot_error_vs_angle(self, bins=12, elements=['decoded_vs_true', 'decoded_vs_optimal', 'decoded_vs_true_counts', 'decoded_vs_optimal_counts']):
-        # https://stackoverflow.com/questions/21619347/creating-a-python-histogram-without-pylab
-        # create figure and axis objects with subplots()
-        fig, ax = plt.subplots()
-
-        if 'decoded_vs_true_counts' in elements:
-            # Takes the angle list and bins it, with average error values attached to it
-            bin_array = np.linspace(-np.pi, np.pi, bins)
-
-            hist_avg_error = []
-            hist_counts = []
-            angles = np.array(self.angle_decoded_vs_true, dtype=np.float32)
-            errors = self.error_decoded_vs_true[:]
-            for i in range(len(bin_array) - 1):  # for each bin
-                mask = (angles >= bin_array[i]) & (angles < bin_array[i + 1])
-                indices = list(compress(range(len(angles[mask])), angles[mask]))
-                sum_of_errors_in_bin = 0
-                for idx in indices:
-                    sum_of_errors_in_bin += errors[idx]
-                avg_error_in_bin = sum_of_errors_in_bin / len(angles[mask])
-                hist_avg_error.append(avg_error_in_bin)
-                hist_counts.append(len(angles[mask]))
-
-            ax.set_xlabel("Angle between decoded and true velocity vectors")
-            ax.bar((bin_array[1:] + bin_array[:-1]) / 2., hist_counts, zorder=-100)
-            ax.set_ylabel("Frequency", color='b')
-
-        if 'decoded_vs_true' in elements:
-            # Takes the angle list and bins it, with average error values attached to it
-            bin_array = np.linspace(-np.pi, np.pi, bins)
-
-            hist_avg_error = []; hist_counts = []
-            angles = np.array(self.angle_decoded_vs_true, dtype=np.float32)
-            errors = self.error_decoded_vs_true[:]
-            for i in range(len(bin_array) - 1):  # for each bin
-                mask = (angles >= bin_array[i]) & (angles < bin_array[i + 1])
-                indices = list(compress(range(len(angles[mask])), angles[mask]))
-                sum_of_errors_in_bin = 0
-                for idx in indices:
-                    sum_of_errors_in_bin += errors[idx]
-                avg_error_in_bin = sum_of_errors_in_bin / len(angles[mask])
-                hist_avg_error.append(avg_error_in_bin)
-                hist_counts.append(len(angles[mask]))  # might be useful for seeing distribution of angles
-
-            # twin object for two different y-axis on the sample plot
-            ax2 = ax.twinx()
-            ax2.plot((bin_array[1:] + bin_array[:-1]) / 2., hist_avg_error, 'r-', zorder=100)
-            ax2.set_ylabel("Average error in vector length", color='r')
-
-        plt.show()
+        return player_path_x, player_path_y, x_control_buffer, y_control_buffer
 
 
 def main():
-    global score, target_loc, target_width, target_height, frames, summary_visualization_mode, wait_frames, x_control_buffer, y_control_buffer, d
+    global score, run_no, target_no, player_path_x, player_path_y, true_vel_x, true_vel_y, correct_targets, input_targets, datetimes, eeg_output_for_vis
+    frames = 0
+    wait_frames = 0
+    x_control_buffer = []
+    y_control_buffer = []
     pygame.display.set_caption("BCI Simulator")
 
-    # configure the background of playing area
+    # configure the background
     background = pygame.Surface(screen.get_size())
     background.fill((255, 255, 255))
     screen.blit(background, (0, 0))
-
     pygame.mouse.set_visible(False)  # hide mouse
-
-    datetime_of_trials = []
-
-    print(game_mode)
-
-    if experiment_mode:  # Experimental protocol goes here
-        target_velocity_search_list = [13, 17, 21]
-        cursor_velocity_search_list = [11, 17, 23]
-        velocity_grid = []
-        for Tv in target_velocity_search_list:
-            for Cv in cursor_velocity_search_list:
-                for n in range(reps_per_velocity_limit_ratio):
-                    velocity_grid.append([Tv, Cv])
-        print("Will be following from the following Tv/Cv ratios randomly: " + str(velocity_grid))
-
-    # if game_mode == "DT_rect":
-    #     # left
-    #     block = Targets.BarTargetLeft()
-    #     targetSprite.add(block)
-    #     # right
-    #     block = Targets.BarTargetRight()
-    #     targetSprite.add(block)
-    #     # up
-    #     block = Targets.BarTargetUp()
-    #     targetSprite.add(block)
-    #     # down
-    #     block = Targets.BarTargetDown()
-    #     targetSprite.add(block)
-    #
-    # elif game_mode == "DT_circ":
-    #     for i in np.arange(0, 2*math.pi, math.pi/4):
-    #         # This represents a block
-    #         block = Targets.CircularReachTarget()
-    #
-    #         # Set a random location for the block
-    #         block.center_x = 400
-    #         block.center_y = 400
-    #         block.radius = 300
-    #         block.speed = 0  # targets do not move (0 radians per frame)
-    #         block.angle = i
-    #
-    #         # Add the target block to the group of target sprites
-    #         targetSprite.add(block)  # this is a group of all possible sprites
-    #
-    # elif game_mode == "CP":
-    #     block = Targets.ContinuousTarget(targetPath, trialLength, max_target_velocity, target_physics_mode)
-    #     targetSprite.add(block)
-    #
-    # chosenTarget.add(random.choice(targetSprite.sprites()))  # chosenTarget is a group containing a chosen sprite
-
-    # corr = pd.DataFrame(columns=['x', 'y'])
-
-    currentTrial = 0
-    if game_mode == "DT_rect":
-        print("DT_rect selected, skipping circular reach-out calibration")
-        currentTrial += 1
-
     clock = pygame.time.Clock()
 
-    keepGoing = True
-    start = False
+    # Main Loop Trackers!!!
+    keepGoing = True  # controls whether the program continues to run.
+    start = False  # controls the feedback control period.
+    seconds_out_tracker = False  # controls the break period.
 
-    seconds_out_tracker = False
-    screen.blit(textsurface_calibration, (200, 400))
+    # initialize trial number tracker
+    if game_mode == "CP":
+        run_no = -1
+    else:
+        run_no = 0
 
-    seconds_out = pygame.USEREVENT + 1  # creates "break time over" event
+    seconds_out = pygame.USEREVENT + 1  # creates "break time over" event 
 
-    for n in range(20):
-        block = Targets.BarTargetLeft(trialLength)
-        targetSprite.add(block)
-        block = Targets.BarTargetRight(trialLength)
-        targetSprite.add(block)
-        block = Targets.BarTargetUp(trialLength)
-        targetSprite.add(block)
-        block = Targets.BarTargetDown(trialLength)
-        targetSprite.add(block)
-
-    # main loop
+    # Main loop
     while keepGoing:
         clock.tick(30)
 
@@ -550,423 +471,308 @@ def main():
             chosenTarget.clear(screen, background)
             playerSprite.clear(screen, background)
             seconds_out_tracker = False
-            if currentTrial > 0:
+            if run_no > 0:
                 screen.blit(textsurface, (200, 400))
 
             wait_frames += 1  # countdown to next trial
 
             if wait_frames > 100:
                 screen.fill(pygame.Color("white"))
-                if currentTrial == 0:
-                    screen.blit(textsurface_calibration_new, (275, 400))
-                elif currentTrial > 0:
-                    screen.blit(textsurface_new, (282, 400))
+                screen.blit(textsurface_new, (282, 400))
                 screen.blit(textsurface2_new, (20, 425))
 
-                my_event = pygame.event.Event(seconds_out, message="Break time over")
+                my_event = pygame.event.Event(seconds_out, {"message": "Break time over"})
                 pygame.event.post(my_event)
                 seconds_out_tracker = True
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                # try:
-                #     # trim off all zero placeholder values
-                #     # playerPathTrial = playerPath[~np.all(playerPath == 0, axis=1)]
-                #     # targetPathTrial = targetPath[~np.all(targetPath == 0, axis=1)]
-                #
-                #     print([np.corrcoef(playerPathTrial[:, 0], targetPathTrial[:, 0])[1, 0],
-                #            np.corrcoef(playerPathTrial[:, 1], targetPathTrial[:, 1])[1, 0]])
-                #
-                #     corr.loc[len(corr)] = [np.corrcoef(playerPathTrial[:, 0], targetPathTrial[:, 0])[1, 0],
-                #                            np.corrcoef(playerPathTrial[:, 1], targetPathTrial[:, 1])[1, 0]]
-                # except UnboundLocalError:
-                #     pass
                 keepGoing = False
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_p:
-                    # Force quit by pressing 'p'
+                    # Force quit by pressing 'P'
                     keepGoing = False
 
                 if event.key == pygame.K_SPACE and not start and seconds_out_tracker:
-                    starto = time.time()
-                    now = datetime.now()
-                    now = now.strftime("%Y-%m-%d-%H-%M-%S")
-                    datetime_of_trials.append(now)
+                    targetSprite = pygame.sprite.LayeredUpdates()  # list of target sprites
+                    inactivetargetSprite = pygame.sprite.LayeredUpdates()
+                    if game_mode == "DT_2D":
+                        for n in range(target_count / 4):
+                            block = ActiveTarget('left')
+                            targetSprite.add(block)
+                            block = ActiveTarget('right')
+                            targetSprite.add(block)
+                            block = ActiveTarget('up')
+                            targetSprite.add(block)
+                            block = ActiveTarget('down')
+                            targetSprite.add(block)
+                    elif game_mode == "DT_1D":
+                        correct_order = []
+                        incorrect_order = []
+                        for n in range(int(target_count / 2)):  # Blockwise randomize
+                            print(n)
+                            eitheror = ['left', 'right']
+                            first_in_block = random.choice(eitheror)
+
+                            correct_targets[run_no][n * 2] = first_in_block
+                            eitheror.remove(first_in_block)
+                            second_in_block = eitheror[0]
+
+                            correct_targets[run_no][n * 2 + 1] = second_in_block
+
+                            correct_order.append(first_in_block)
+                            correct_order.append(second_in_block)
+                            incorrect_order.append(second_in_block)
+                            incorrect_order.append(first_in_block)
+
+                            block = ActiveTarget(first_in_block)
+                            targetSprite.add(block)
+                            block = ActiveTarget(second_in_block)
+                            targetSprite.add(block)
+
+                            inactiveblock = InactiveTarget(second_in_block)
+                            inactivetargetSprite.add(inactiveblock)
+                            inactiveblock = InactiveTarget(first_in_block)
+                            inactivetargetSprite.add(inactiveblock)
+                        print(correct_order)
+                        print(incorrect_order)
 
                     screen.fill(pygame.Color("white"))
                     playerSprite.clear(screen, background)
                     chosenTarget.clear(screen, background)
-                    playerStepCapturerSprite.clear(screen, background)  # ?
-                    playerStepModulatorSprite.clear(screen, background)  # ?
+                    playerStepCapturerSprite.clear(screen, background)
 
                     # Reset after an iteration
                     chosenTarget.empty()
-                    #targetSprite.empty()
                     playerSprite.empty()
                     playerStepCapturerSprite.empty()
-                    playerStepModulatorSprite.empty()
 
-                    player = Player(currentTrial)
+                    player = PlayerCursor()
                     playerSprite.add(player)
 
-                    if game_mode == "CP":
-                        if currentTrial > 0:
+                    if game_mode == "CP":  # NOT SUPPORTED IN THIS BUILD YET
+                        if run_no >= 0:
                             block = Targets.ContinuousTarget(targetPath, trialLength, max_target_velocity, target_physics_mode)
                             targetSprite.add(block)
                             chosenTarget.add(random.choice(targetSprite.sprites()))
 
-                        elif currentTrial == 0:
+                        elif run_no == -1:
                             block = Targets.CircularReachTarget()
                             targetSprite.add(block)
                             chosenTarget.add(random.choice(targetSprite.sprites()))
 
-                    elif game_mode == "DT_rect":
-                        # block = Targets.BarTargetLeft(trialLength); targetSprite.add(block)
-                        # block = Targets.BarTargetRight(trialLength); targetSprite.add(block)
-                        # block = Targets.BarTargetUp(trialLength); targetSprite.add(block)
-                        # block = Targets.BarTargetDown(trialLength); targetSprite.add(block)
-                        chosen = random.choice(targetSprite.sprites())
-                        chosenTarget.add(chosen)  # add to target sprite list
-                        targetSprite.remove(chosen)
-
+                    elif game_mode == "DT_1D" or game_mode == "DT_2D":
+                        chosen = targetSprite.get_sprite(target_no)
+                        wrong = inactivetargetSprite.get_sprite(target_no)
+                        chosenTarget.empty()
+                        chosenTarget.add(chosen)  # add to current activated target sprite
+                        wrongTarget.empty()
+                        wrongTarget.add(wrong)
+                        # targetSprite.remove(chosen)  # remove from pool of possible targets
 
                     stepcapturer = PlayerStepCapturer()
                     playerStepCapturerSprite.add(stepcapturer)
-                    stepmodulator = PlayerStepModulator()
-                    playerStepModulatorSprite.add(stepmodulator)
-
+                    screen.fill(pygame.Color("white"))
+                    chosenTarget.update(frames, run_no, target_no)
                     chosenTarget.draw(screen)
-
-                    if experiment_mode:
-                        random.shuffle(velocity_grid)
-                        try:
-                            if currentTrial > 0:
-                                current_tvcv = velocity_grid.pop()
-                                tvcv_order.append(current_tvcv)
-                            elif currentTrial == 0:
-                                current_tvcv = [0, 25]
-                        except IndexError:
-                            print("IndexError")
-                            pass
-                        for s in targetSprite.sprites():
-                            s.max_target_velocity = current_tvcv[0]
-                        for s in playerSprite.sprites():
-                            s.max_cursor_velocity = current_tvcv[1]
+                    pygame.display.update()
+                    pygame.time.wait(2000)
 
                     frames = 0
                     start = True
 
-            # if event.type == seconds_out:
-
         if start:
             frames += 1
-            if currentTrial > 0:
-                chosenTarget.update(frames)
+            if run_no >= 0:
+                chosenTarget.update(frames, run_no, target_no)
+                wrongTarget.update(frames, run_no, target_no)
+                step_velocity_vector, true_vel_x, true_vel_y = playerStepCapturerSprite.update(frames, run_no, target_no, true_vel_x, true_vel_y)
+                player_path_x, player_path_y, x_control_buffer, y_control_buffer = playerSprite.update(step_velocity_vector, x_control_buffer, y_control_buffer, correct_order[target_no])
 
-                if game_mode == "DT_rect":
+                chosenTarget.clear(screen, background)
+                playerSprite.clear(screen, background)
+                playerStepCapturerSprite.clear(screen, background)
+
+                chosenTarget.draw(screen)
+                if frames == 1:  # shows the target to aim for before allowing control of cursor.
+                    pygame.display.update()
+                    pygame.time.wait(2000)
+                playerSprite.draw(screen)
+                playerStepCapturerSprite.draw(screen)
+
+                if game_mode == "DT_1D" or game_mode == "DT_2D":
                     if pygame.sprite.groupcollide(playerSprite, chosenTarget, False, False):
-                        try:
-                            for s in chosenTarget.sprites():
-                                print(len(chosenTarget.sprites()))
-                                print(s)
-                                print([s.report_trajectory()[0], s.report_trajectory()[1]])
-                                targetPath.append([s.report_trajectory()[0], s.report_trajectory()[1]])
-                                chosenTarget.remove(s)
-                            for s in playerSprite.sprites():
-                                playerPath.append([s.report_trajectory()[0], s.report_trajectory()[1]])
-                            print(len(playerPath))
+                        io.savemat('eeg_output_for_vis.mat', {'mydata': eeg_output_for_vis})
+                        input_targets[run_no][target_no] = correct_order[target_no]
+                        now = datetime.now()
+                        now = now.strftime("%Y-%m-%d-%H-%M-%S")
+                        datetimes[run_no][target_no] = now
 
-                            chosen = random.choice(targetSprite.sprites())
-                            chosenTarget.add(chosen)  # add to target sprite list
-                            targetSprite.remove(chosen)
-
-
-                            chosenTarget.update(frames)  # unlike CP, we update bar targets even when currentTrial == 0  <- BAD APPROACH! game mode = "DT_rect" should just start out with +1 currentTrial to skip the calibration phase.
-                            print(chosenTarget, len(chosenTarget))
-                            score += 1
-                            # print(score)
-                            screen.fill(pygame.Color("white"))
-
-                            # Reset player
-                            pygame.mouse.set_pos(375, 375)
-                            playerSprite.empty()
-                            playerStepCapturerSprite.empty()
-                            playerStepModulatorSprite.empty()
-                            pygame.time.wait(1000)
-                            player = Player(currentTrial)
-                            playerSprite.add(player)
-                            stepcapturer = PlayerStepCapturer()
-                            playerStepCapturerSprite.add(stepcapturer)
-                            stepmodulator = PlayerStepModulator()
-                            playerStepModulatorSprite.add(stepmodulator)
-                        except IndexError:
+                        try:  # IF THIS IS NOT THE LAST TARGET IN THIS RUN
+                            target_no += 1
+                            chosen = targetSprite.get_sprite(target_no)
+                            wrong = inactivetargetSprite.get_sprite(target_no)
+                            chosenTarget.empty()
+                            chosenTarget.add(chosen)  # add to current activated target sprite
+                            wrongTarget.empty()
+                            wrongTarget.add(wrong)
+                            # targetSprite.remove(chosen)  # remove from pool of possible targets
+                        except:
                             pass
 
-            elif currentTrial == 0:
-                if pygame.sprite.groupcollide(playerSprite, chosenTarget, False, True):
-                    print("collision detected")
-                    # explosionSprites.add(EnemyExplosion(self.rect.center))
-                    if game_mode == "CP":
-                        block = Targets.CircularReachTarget()
-                        targetSprite.add(block)
-                        chosenTarget.add(
-                            random.choice(targetSprite.sprites()))  # replenish the chosenTarget single sprite group.
-                    # elif game_mode == "DT_rect":
-                    #     block = Targets.BarTargetLeft(); targetSprite.add(block)
-                    #     block = Targets.BarTargetRight(); targetSprite.add(block)
-                    #     block = Targets.BarTargetUp(); targetSprite.add(block)
-                    #     block = Targets.BarTargetDown(); targetSprite.add(block)
-                    #     chosenTarget.add(
-                    #         random.choice(targetSprite.sprites()))  # replenish the chosenTarget single sprite group.
-                    #     chosenTarget.update()  # unlike CP, we update bar targets even when currentTrial == 0  <- BAD APPROACH! game mode = "DT_rect" should just start out with +1 currentTrial to skip the calibration phase.
+                        screen.fill(pygame.Color("white"))
 
-
-                    print(chosenTarget, len(chosenTarget))
-                    score += 1
-                    # print(score)
-                    screen.fill(pygame.Color("white"))
-
-                    # Reset player
-                    pygame.mouse.set_pos(375, 375)
-                    playerSprite.empty()
-                    playerStepCapturerSprite.empty()
-                    playerStepModulatorSprite.empty()
-                    player = Player(currentTrial)
-                    playerSprite.add(player)
-                    stepcapturer = PlayerStepCapturer()
-                    playerStepCapturerSprite.add(stepcapturer)
-                    stepmodulator = PlayerStepModulator()
-                    playerStepModulatorSprite.add(stepmodulator)
-
-                    # pygame.time.wait(3000) # delay between reaches?
-
-            v_step = playerStepCapturerSprite.update()
-            # print("input: ")
-            # print(v_step)
-
-            if currentTrial > 0:
-                vis_true_x_over_time.append(v_step[0])
-                vis_true_y_over_time.append(v_step[1])
-
-            v_modulated, modulation_gain = playerStepModulatorSprite.update(v_step)
-            playerSprite.update(v_modulated, modulation_gain, frames)
-
-            chosenTarget.clear(screen, background)
-            playerSprite.clear(screen, background)  # order is important for transparency
-            playerStepCapturerSprite.clear(screen, background)
-            playerStepModulatorSprite.clear(screen, background)
-
-            chosenTarget.draw(screen)
-            playerSprite.draw(screen)
-            playerStepCapturerSprite.draw(screen)
-            playerStepModulatorSprite.draw(screen)
-
-            # print(frames)
-            if currentTrial > 0:  # if not a calibration trial
-                if game_mode == "CP":
-                    if frames == trialLength:  # after a trial
-                        for s in playerSprite.sprites():
-                            print("Just finished trial number " + str(currentTrial))
-                            end = time.time()
-                            print(str(end - starto) + ' seconds taken.')
-                            playerPath.append([s.report_trajectory()[0], s.report_trajectory()[1]])
-
-                        for s in chosenTarget.sprites():
-                            targetPath.append([s.report_trajectory()[0], s.report_trajectory()[1]])
-
-                        currentTrial += 1  # move on to next trial
-
-                        if summary_visualization_mode:
-                            playerSprite.sprites()[0].plot_error_vs_angle(bins=12)
-
-                        wait_frames = 0
+                        # Reset player
+                        pygame.mouse.set_pos(400, 400)
+                        playerSprite.empty()
+                        playerStepCapturerSprite.empty()
+                        pygame.time.wait(1000)
+                        player = PlayerCursor()
+                        playerSprite.add(player)
+                        stepcapturer = PlayerStepCapturer()
+                        playerStepCapturerSprite.add(stepcapturer)
                         frames = 0
-                        # Reset screen
-                        start = False
 
-                elif game_mode == "DT_rect":  # For DT_rect, unlike CP where trial length is defined by time,
+                    if pygame.sprite.groupcollide(playerSprite, wrongTarget, False, False):
+                        io.savemat('eeg_output_for_vis.mat', {'mydata': eeg_output_for_vis})
+                        input_targets[run_no][target_no] = incorrect_order[target_no]
+                        now = datetime.now()
+                        now = now.strftime("%Y-%m-%d-%H-%M-%S")
+                        datetimes[run_no][target_no] = now
 
-                    if not chosenTarget.sprites():  # if rect list is empty
-                        print("All sprites killed")
-                        for s in playerSprite.sprites():
-                            print("Just finished trial number " + str(currentTrial))
-                            end = time.time()
-                            print(str(end - starto) + ' seconds taken.')
+                        try:  # IF THIS IS NOT THE LAST TARGET IN THIS RUN
+                            target_no += 1
+                            chosen = targetSprite.get_sprite(target_no)
+                            wrong = inactivetargetSprite.get_sprite(target_no)
+                            chosenTarget.empty()
+                            chosenTarget.add(chosen)  # add to current activated target sprite
+                            wrongTarget.empty()
+                            wrongTarget.add(wrong)
+                            # targetSprite.remove(chosen)  # remove from pool of possible targets
+                        except:
+                            pass
 
+                        screen.fill(pygame.Color("white"))
 
-                        currentTrial += 1  # move on to next trial
-
-                        wait_frames = 0
+                        # Reset player
+                        pygame.mouse.set_pos(400, 400)
+                        playerSprite.empty()
+                        playerStepCapturerSprite.empty()
+                        pygame.time.wait(1000)
+                        player = PlayerCursor()
+                        playerSprite.add(player)
+                        stepcapturer = PlayerStepCapturer()
+                        playerStepCapturerSprite.add(stepcapturer)
                         frames = 0
-                        # Reset screen
-                        start = False
 
-            elif currentTrial == 0:
-                if frames >= trialLength:
-                    frames = trialLength - 1   # force frames to stay below triallength to circumvent data saving issue; since we don't save data for calibration trial anyway.
-                if score == 5:   # Number of calibration targets needed to hit
-                    currentTrial += 1
+                    if frames == max_feedback_period:
+                        io.savemat('eeg_output_for_vis.mat', {'mydata': eeg_output_for_vis})
+                        input_targets[run_no][target_no] = "timeout"
+                        now = datetime.now()
+                        now = now.strftime("%Y-%m-%d-%H-%M-%S")
+                        datetimes[run_no][target_no] = now
+
+                        try:  # IF THIS IS NOT THE LAST TARGET IN THIS RUN
+                            target_no += 1
+                            chosen = targetSprite.get_sprite(target_no)
+                            wrong = inactivetargetSprite.get_sprite(target_no)
+                            chosenTarget.empty()
+                            chosenTarget.add(chosen)  # add to current activated target sprite
+                            wrongTarget.empty()
+                            wrongTarget.add(wrong)
+                            # targetSprite.remove(chosen)  # remove from pool of possible targets
+                        except:
+                            pass
+
+                        screen.fill(pygame.Color("white"))
+
+                        # Reset player
+                        pygame.mouse.set_pos(400, 400)
+                        playerSprite.empty()
+                        playerStepCapturerSprite.empty()
+                        pygame.time.wait(1000)
+                        player = PlayerCursor()
+                        playerSprite.add(player)
+                        stepcapturer = PlayerStepCapturer()
+                        playerStepCapturerSprite.add(stepcapturer)
+                        frames = 0
+
+            elif run_no == -1:
+                # CP calibration trial. Not implemented yet in this build.
+                pass
+
+            if game_mode == "DT_1D" or game_mode == "DT_2D":
+                # print(target_no)
+                # print(target_count)
+                if target_no == target_count:
+                    print("All sprites killed")
+                    print("Just finished run number " + str(run_no))
+
+                    # EXPERIMENTAL PARAM 2: WHETHER CARRY ON OR NOT.
+                    # THE BELOW 2 LINES LOCATED HERE = NO CARRY ON BETWEEN RUNS.
+                    if experimental_param_array[run_no].startswith("CO"):
+                        carryon = int(experimental_param_array[run_no].split("CO")[1])
+                        if carryon == 1 or carryon == 2:
+                            pass
+                        elif carryon == 0:
+                            x_control_buffer = []
+                            y_control_buffer = []
+                        else:  # default
+                            x_control_buffer = []
+                            y_control_buffer = []
+
+                    run_no += 1
+                    target_no = 0
                     wait_frames = 0
                     frames = 0
                     start = False
 
-            if currentTrial > trialCount:
+            elif game_mode == "CP" and run_no == -1:  # not fully verified in current build
+                if frames >= trial_length:
+                    frames = trial_length - 1  # force frames to stay below triallength to circumvent data saving issue; since we don't save data for calibration trial anyway.
+                if score == 5:  # Number of calibration targets needed to hit
+                    run_no += 1
+                    wait_frames = 0
+                    frames = 0
+                    start = False
+            # print(run_no)
+            # print(run_count)
+            if run_no == run_count:
                 print("Experiment finished.")
 
-                export_file_path = filedialog.askdirectory(title='Please choose a directory that you can access...')
-                x_corr_trials = []; y_corr_trials = []
-                allTargetPathX = []; allTargetPathY = []; allTargetVelX = []; allTargetVelY = []
-                allPlayerPathX = []; allPlayerPathY = []; allPlayerVelX = []; allPlayerVelY = []
-                if game_mode == "DT_rect":
-                    print(len(targetPath))
-                    for target_no in range(0, len(targetPath)):
-                        allTargetPathX.append(targetPath[target_no][0][:, 0][1:])
-                        allTargetPathY.append(targetPath[target_no][0][:, 1][1:])
-                        allTargetVelX.append(targetPath[target_no][1][:, 0][1:])
-                        allTargetVelY.append(targetPath[target_no][1][:, 1][1:])
-                        allPlayerPathX.append(playerPath[target_no][0][:, 0][1:])
-                        allPlayerPathY.append([-e+750 for e in playerPath[target_no][0][:, 1][1:]])
-                        allPlayerVelX.append(playerPath[target_no][1][:, 0][1:])
-                        allPlayerVelY.append([-e for e in playerPath[target_no][1][:, 1][1:]])
-                    allTargetPathX = np.concatenate(allTargetPathX)
-                    allTargetPathY = np.concatenate(allTargetPathY)
-                    allTargetVelX = np.concatenate(allTargetVelX)
-                    allTargetVelY = np.concatenate(allTargetVelY)
-                    allPlayerPathX = np.concatenate(allPlayerPathX)
-                    allPlayerPathY = np.concatenate(allPlayerPathY)
-                    allPlayerVelX = np.concatenate(allPlayerVelX)
-                    allPlayerVelY = np.concatenate(allPlayerVelY)
+                for r in range(run_count):
+                    trial_data = {
+                        'PlayerPathX': player_path_x[r],
+                        'PlayerPathY': player_path_y[r],
+                        'TrueVelX': true_vel_x[r],
+                        'TrueVelY': true_vel_y[r],
+                        'CorrectTarget': correct_targets[r],
+                        'InputTarget': input_targets[r],
+                        'DateTime': datetimes[r]
+                    }
 
-                for trial_no in range(0, trialCount):
-                    if game_mode == "CP":
-                        trajectories = {
-                            'PlayerPathX': playerPath[trial_no][0][:, 0][1:],
-                            'PlayerPathY': [-e+750 for e in playerPath[trial_no][0][:, 1][1:]],
-                            'TargetPathX': targetPath[trial_no][0][:, 0][1:],
-                            'TargetPathY': [-e+750 for e in targetPath[trial_no][0][:, 1][1:]],
-                            'PlayerVelX': playerPath[trial_no][1][:, 0][1:],
-                            'PlayerVelY': [-e for e in playerPath[trial_no][1][:, 1][1:]],
-                            'TargetVelX': targetPath[trial_no][1][:, 0][1:],
-                            'TargetVelY': [-e for e in targetPath[trial_no][1][:, 1][1:]],
-                            # 'DecoderRawX': vis_xcontrol_b4_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'DecoderRawY': vis_ycontrol_b4_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'DecoderDwellX': vis_xcontrol_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'DecoderDwellY': vis_ycontrol_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            'TruePlayerX': vis_true_x_over_time[trial_no * trialLength:(trial_no+1)*trialLength],
-                            'TruePlayerY': [-e for e in vis_true_y_over_time[trial_no * trialLength:(trial_no+1)*trialLength]]
-                        }
-                    elif game_mode == "DT_rect":
-                        trajectories = {
-                            'PlayerPathX': allPlayerPathX,
-                            'PlayerPathY': allPlayerPathY,
-                            'TargetPathX': allTargetPathX,
-                            'TargetPathY': allTargetPathY,
-                            'PlayerVelX': allPlayerVelX,
-                            'PlayerVelY': allPlayerVelY,
-                            'TargetVelX': allTargetVelX,
-                            'TargetVelY': allTargetVelY,
-                            # 'DecoderRawX': vis_xcontrol_b4_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'DecoderRawY': vis_ycontrol_b4_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'DecoderDwellX': vis_xcontrol_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'DecoderDwellY': vis_ycontrol_dwell[trial_no * trialLength:(trial_no+1)*trialLength],
-                            # 'TruePlayerX': vis_true_x_over_time[trial_no * trialLength:(trial_no + 1) * trialLength],
-                            # 'TruePlayerY': [-e for e in
-                                            # vis_true_y_over_time[trial_no * trialLength:(trial_no + 1) * trialLength]]
-                        }
-                        print(len(allPlayerPathX))
-                        print(len(allTargetPathX))
+                    trial_data_df = pd.DataFrame(trial_data, columns=list(trial_data.keys()))
+                    trial_data_df.to_csv(save_file_directory.get()+'/'+str(r)+'_'+str(experimental_param_array[r])+'.csv', index=False, header=True)
 
+                # This code is to hide the main tkinter window
+                root = tkinter.Tk()
+                root.attributes('-topmost', 1)
+                root.withdraw()
 
-                    saved_trajectory_df = pd.DataFrame(trajectories, columns=list(trajectories.keys()))
-                    if experiment_mode:
-                        filename = export_file_path+'/'+'trial'+str(trial_no)+'target'+str(tvcv_order[trial_no][0])+'cursor'+str(tvcv_order[trial_no][1])+'-'+datetime_of_trials[trial_no+1]+'.csv'
-                        saved_trajectory_df.to_csv(filename, index=False, header=True)
-                        encrypt_data(filename=filename, key="J64ZHFpCWFlS9zT7y5zxuQN1Gb09y7cucne_EhuWyDM=")
-                    if not experiment_mode:
-                        saved_trajectory_df.to_csv(export_file_path+'/'+str(trial_no)+'.csv', index=False, header=True)
+                # Message Box
+                tkinter.messagebox.showinfo("Thank You", "The experiment is finished. Please find the data saved in " + str(save_file_directory.get()) + " and email it to hyonyous@andrew.cmu.edu")
 
-                    # From saved trajectory information, calculate tracking correlation coefficient
-                    # x_corr = np.corrcoef(trajectories['PlayerPathX'], trajectories['TargetPathX'])[1, 0]
-                    # x_corr_trials.append(x_corr)
-                    # y_corr = np.corrcoef(trajectories['PlayerPathY'], trajectories['TargetPathY'])[1, 0]
-                    # y_corr_trials.append(y_corr)
+                root.deiconify()
+                root.attributes("-topmost", True)
+                # root.mainloop()
 
-                if summary_visualization_mode:
-                    plt.figure()
-                    plt.hist(vis_xcontrol_b4_dwell, bins=50)
-                    plt.title('Distribution of normalized x-dir control signals')
-                    plt.xlabel('x-dir control signal')
-                    plt.ylabel('Frequency')
-                    plt.xticks([-4, -3, -2, -1, 0, 1, 2, 3, 4])
-                    plt.axvline(x=d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.axvline(x=-d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.show()
-
-                    plt.figure()
-                    plt.hist(vis_ycontrol_b4_dwell, bins=50)
-                    plt.title('Distribution of normalized y-dir control signals')
-                    plt.xlabel('y-dir control signal')
-                    plt.ylabel('Frequency')
-                    plt.xticks([-4, -3, -2, -1, 0, 1, 2, 3, 4])
-                    plt.axvline(x=d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.axvline(x=-d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.show()
-
-                    plt.figure()
-                    plt.hist(vis_xcontrol_dwell, bins=50)
-                    plt.title('Distribution of normalized x-dir control signals after dwell check')
-                    plt.xlabel('x-dir control signal')
-                    plt.ylabel('Frequency')
-                    plt.xticks([-4, -3, -2, -1, 0, 1, 2, 3, 4])
-                    plt.axvline(x=d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.axvline(x=-d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.show()
-
-                    plt.figure()
-                    plt.hist(vis_ycontrol_dwell, bins=50)
-                    plt.title('Distribution of normalized y-dir control signals after dwell check')
-                    plt.xlabel('y-dir control signal')
-                    plt.ylabel('Frequency')
-                    plt.xticks([-4, -3, -2, -1, 0, 1, 2, 3, 4])
-                    plt.axvline(x=d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.axvline(x=-d, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.show()
-
-                    plt.figure()
-                    plt.hist(vis_vnorms_b4_cap, bins=50)
-                    plt.title('Distribution of velocities before max velocity enforcement, with dwell states')
-                    plt.xlabel('velocity (pixels/frame)')
-                    plt.ylabel('Frequency')
-                    plt.axvline(x=max_cursor_velocity, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.show()
-
-                    plt.figure()
-                    plt.hist(vis_vnorms_capped, bins=50)
-                    plt.title('Distribution of velocities after max velocity enforcement, with dwell states')
-                    plt.xlabel('velocity (pixels/frame)')
-                    plt.ylabel('Frequency')
-                    plt.axvline(x=max_cursor_velocity, ymin=0, ymax=1000, color='red', linestyle='dashed')
-                    plt.show()
-
-                # np.set_printoptions(threshold=10)
                 keepGoing = False
 
-        # # See if the player block has collided with anything.
-        #
-        # targets_hit_list = pygame.sprite.spritecollide(player, chosenTarget, True)
-        #
-        # for target in targets_hit_list:
-        #     score += 1
-        #     print(score)
-
         pygame.display.flip()
-
     pygame.mouse.set_visible(True)  # return mouse
-    print(tvcv_order)
+
 
 if __name__ == "__main__":
     main()
-
-
 
