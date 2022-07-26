@@ -1,5 +1,4 @@
-# Closed-loop brain-computer interface simulator
-# Hyonyoung Shin
+# Closed-loop brain-computer interface simulation
 # Feb 2022
 
 from ui.get_params import *
@@ -32,39 +31,31 @@ experimental_param_array = params['experimental_param_array']
 run_count = params['run_count']
 
 if save_file_directory.get() == "":
-    # This code is to hide the main tkinter window
+    # hide the main tkinter window
     root = tkinter.Tk()
     root.attributes('-topmost', 1)
     root.withdraw()
 
-    # Message Box
-    tkinter.messagebox.showinfo("Warning", "You did not specify a save file directory, or the directory is inaccessible. Please restart the program!")
+    # invalid directory
+    tkinter.messagebox.showinfo("Warning",
+                                "You did not specify a save file directory, or the directory is inaccessible. Please restart the program!")
 
     root.deiconify()
     root.attributes("-topmost", True)
     sys.exit()
 
 experimental_param_array = experimental_param_array.split(" ")
-# BinWidth_array = []; CarryOn_array = [];  CursorSpeed_array = []
-# for i in experimental_param_array:
-#     if i.startswith("BW"):
-#         BinWidth_array.append(int(i.split("BW")[1]))
-# for i in experimental_param_array:
-#     if i.startswith("CO"):
-#         CarryOn_array.append(int(i.split("CO")[1]))
-# for i in experimental_param_array:
-#     if i.startswith("CS"):
-#         CursorSpeed_array.append(int(i.split("CS")[1]))
 
 full_screen_mode = True
 os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (515, 100)  # location of window
 pygame.init()
 myfont = pygame.font.SysFont('Calibri', 20)
-textsurface = myfont.render('Waiting for next trial...', False, (0, 0, 0))
-textsurface_new = myfont.render('Next trial ready.', False, (0, 0, 0))
-textsurface2_new = myfont.render('Please return mouse to center of desk and press the spacebar when ready to start.', False, (0, 0, 0))
+textsurf0 = myfont.render('Waiting for next trial...', False, (0, 0, 0))
+textsurf1 = myfont.render('Next trial ready.', False, (0, 0, 0))
+textsurf2 = myfont.render('Please return mouse to center of desk and press the spacebar when ready to start.',
+                          False, (0, 0, 0))
 
-# Set-up the screen
+# screen setup
 screen_width = 800
 screen_height = 800
 
@@ -74,18 +65,18 @@ else:
     flags = HWSURFACE | HWACCEL | DOUBLEBUF
 
 ctypes.windll.user32.SetProcessDPIAware()
-# true_res = (ctypes.windll.user32.GetSystemMetrics(0),ctypes.windll.user32.GetSystemMetrics(1))
+# sysres = (ctypes.windll.user32.GetSystemMetrics(0),ctypes.windll.user32.GetSystemMetrics(1))
 screen = pygame.display.set_mode((screen_width, screen_height), flags)
 screen.set_alpha(None)
 
-# Set-up the sprites
+# sprite group initialization
 playerSprite = pygame.sprite.Group()
 chosenTarget = pygame.sprite.GroupSingle()
 wrongTarget = pygame.sprite.GroupSingle()
 playerStepCapturerSprite = pygame.sprite.GroupSingle()
 playerStepModulatorSprite = pygame.sprite.GroupSingle()
 
-# Initialize data to be saved
+# initialize data to be saved
 player_path_x = [[[] for tr in range(target_count)] for run in range(run_count)]
 player_path_y = [[[] for tr in range(target_count)] for run in range(run_count)]
 true_vel_x = [[[] for tr in range(target_count)] for run in range(run_count)]
@@ -94,25 +85,26 @@ correct_targets = [[[] for tr in range(target_count)] for run in range(run_count
 input_targets = [[[] for tr in range(target_count)] for run in range(run_count)]
 datetimes = [[[] for tr in range(target_count)] for run in range(run_count)]
 
-# Atlas and leadfield configuration
+# atlas and leadfield configuration
 import_lf_within_source_signals(leadfield_mode)
 
-# Import atlas
+# import atlas
 if leadfield_mode == 'sereega':
     M1_left, M1_right = import_atlas('data/atlas/brodmann_area_def.mat', 'SEREEGA')
 elif leadfield_mode == 'brainstorm':
     M1_left, M1_right = import_atlas('data/atlas/brainnetome_area_def.mat', 'brainstorm')
 
-# Epoch configuration
+# epoch configuration
 srate, epochLength, samples = epoch_config(srate=512, epochLength=33)
 
-# Import leadfield
+# import leadfield
 if leadfield_mode == 'sereega':
     leadfield, lf, orientation, pos, chanlocs = import_leadfield('data/leadfield/32_channel_nyhead_lf.mat', 'sereega')
 elif leadfield_mode == 'brainstorm':
-    leadfield, lf, orientation, pos, chanlocs = import_leadfield('data/leadfield/openmeeg_fsaverage_lf.mat', 'brainstorm')
+    leadfield, lf, orientation, pos, chanlocs = import_leadfield('data/leadfield/openmeeg_fsaverage_lf.mat',
+                                                                 'brainstorm')
 
-# Import channel labels and choose channels for spatial Laplacian filter
+# import channel labels and choose channels for spatial Laplacian filter
 channel_labels = []
 for i in chanlocs[0]:
     channel_labels.append(i[1][0])
@@ -130,25 +122,23 @@ for i in C3_index:
 for i in C4_index:
     channelSelection[1][i] = 1
 
-# Prepare background noise signal
+# prepare background noise signal
 noise = generate_noise_signal('brown-unif', 5.0)
 
-# Prepare background/resting components
+# prepare background/resting components
 if leadfield_mode == 'sereega':
-    component_list_background = create_component('random', 500, noise, component_list=[], absolute_mode=False, mode='sereega')
+    component_list_background = create_component('random', 500, noise, component_list=[], absolute_mode=False,
+                                                 mode='sereega')
 elif leadfield_mode == 'brainstorm':
-    component_list_background = create_component('random', 500, noise, component_list=[], absolute_mode=False, mode='brainstorm')
-
-# Sigmoid function parameter
-Amin = 0.01
+    component_list_background = create_component('random', 500, noise, component_list=[], absolute_mode=False,
+                                                 mode='brainstorm')
 
 pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN])
 
-# Global experiment progress tracking variables.
 run_no = 0
 target_no = 0
 
-max_feedback_period = int(6*30)  # 6s (BCI2000) -> 6*30 frames.
+max_feedback_period = int(6 * 30)  # 6*30 frames
 
 
 class ActiveTarget(pygame.sprite.Sprite):
@@ -214,7 +204,6 @@ class InactiveTarget(pygame.sprite.Sprite):
 
     def update(self, frames, run_no, target_no):
         global score, screen_width, screen_height
-
         if self.dir == 'up':
             self.target_width = 700
             self.target_height = 25
@@ -236,16 +225,14 @@ class InactiveTarget(pygame.sprite.Sprite):
             self.rect.x = screen_width - 50
             self.rect.y = (screen_height - self.target_height) // 2
 
-        # pygame.draw.rect(self.image, (255, 0, 0), (0, 0, 700, 700), 0)  # hide drawing for inactive!
-
 
 class PlayerStepCapturer(pygame.sprite.Sprite):
     def __init__(self):
         global screen_width, screen_height
         pygame.sprite.Sprite.__init__(self)
-        self.radius = int(screen_width * 0.1 * 0.5)  # 10% of screen width (BCI2000), halved because radius.
+        self.radius = int(screen_width * 0.1 * 0.5)  # 10% of screen width, halved because radius.
 
-        self.image = pygame.Surface((self.radius * 2, self.radius * 2))  # need a better way of drawing the circle
+        self.image = pygame.Surface((self.radius * 2, self.radius * 2))
         self.image.fill((255, 255, 255))
         self.image.set_colorkey((255, 255, 255))
 
@@ -265,7 +252,7 @@ class PlayerStepCapturer(pygame.sprite.Sprite):
         self.rect.x = self.pos_t1[0]
         self.rect.y = self.pos_t1[1]
 
-        self.pos_t1 = (screen_width // 2 - self.radius, screen_height // 2 - self.radius) # reset back to midpoint
+        self.pos_t1 = (screen_width // 2 - self.radius, screen_height // 2 - self.radius)  # reset back to midpoint
         pygame.mouse.set_pos(self.pos_t1)
 
         true_vel_x[run_no][target_no].append(step_velocity_vector[0])
@@ -276,37 +263,33 @@ class PlayerStepCapturer(pygame.sprite.Sprite):
 
 class PlayerCursor(pygame.sprite.Sprite):
     def __init__(self):
-        # global max_cursor_velocity
         global run_no, experimental_param_array
         pygame.sprite.Sprite.__init__(self)
 
         self.radius = int(screen_width * 0.1 * 0.5)
         self.edge_threshold = 0.01
-        self.image = pygame.Surface((self.radius * 2, self.radius * 2))  # need a better way of drawing the circle
+        self.image = pygame.Surface((self.radius * 2, self.radius * 2))
         self.image.fill((255, 255, 255))
         self.image.set_colorkey((255, 255, 255))
 
         pygame.draw.circle(self.image, (0, 0, 255), [self.radius, self.radius], self.radius)
         self.rect = self.image.get_rect()
-
         self.rect.x = screen_width // 2 - self.radius
         self.rect.y = screen_height // 2 - self.radius
 
-        # build position tracker since rect does not support float mathematics.
+        # build position tracker since rect does not support floats
         self.current_pos = [float(self.rect.x), float(self.rect.y)]
 
         self.v = pygame.Vector2()
-        self.v.xy = 0.0001, 0.0001  # Avoid division by zero
+        self.v.xy = 0.0001, 0.0001  # avoid division by zero
         self.gain = 5  # gain of the sigmoid function
 
         if experimental_param_array[run_no].startswith("CS"):
             max_cursor_velocity = int(experimental_param_array[run_no].split("CS")[1])  # in pixels/s
-            max_cursor_velocity = max_cursor_velocity / 30
-            print(max_cursor_velocity)
-            self.max_cursor_velocity = max_cursor_velocity
+            max_cursor_velocity = max_cursor_velocity / 30  # convert units
         else:  # default
             max_cursor_velocity = 5.5
-            self.max_cursor_velocity = max_cursor_velocity
+        self.max_cursor_velocity = max_cursor_velocity
 
     def update(self, step_velocity_vector, x_control_buffer, y_control_buffer, targetcode):
         global game_mode, eeg_output_for_vis
@@ -314,18 +297,17 @@ class PlayerCursor(pygame.sprite.Sprite):
         amp_C3, amp_C4, scaling_factor = velocity_to_mod_amplitude(v[0], v[1], 'perturbed', self.gain)
 
         freqRange = [3, 5, 12, 14]
-        target_C3_x = generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                            5, 20, 0.5, amp_C3)
-        target_C3_y = generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                            5, 20, 0.5, amp_C3)
-        target_C4_x = generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                            5, 20, 0.5, amp_C4)
-        target_C4_y = generate_modulated_ersp(freqRange, 5, 'invburst',
-                                                            5, 20, 0.5, amp_C4)
+        target_C3_x = modulate_signal(freqRange, 5, 'invburst',
+                                      5, 20, 0.5, amp_C3)
+        target_C3_y = modulate_signal(freqRange, 5, 'invburst',
+                                      5, 20, 0.5, amp_C3)
+        target_C4_x = modulate_signal(freqRange, 5, 'invburst',
+                                      5, 20, 0.5, amp_C4)
+        target_C4_y = modulate_signal(freqRange, 5, 'invburst',
+                                      5, 20, 0.5, amp_C4)
 
         # Create components
-        active_component_list = component_list_background[
-                                :]  # copy over background components, to which active components are appended.
+        active_component_list = component_list_background[:]  # copy over background components
         for i in M1_left:
             component = {
                 "sourceIdx": i,
@@ -366,15 +348,13 @@ class PlayerCursor(pygame.sprite.Sprite):
         print(M1_right)
 
         # Generate scalp data
-        eeg = generate_scalp_data(active_component_list, sensorNoise=0.0)
+        eeg = generate_scalp_data(active_component_list)
         if targetcode == 'left':
             targetcode = 2
         elif targetcode == 'right':
             targetcode = 1
         targetcodes = np.full((1, eeg.shape[1]), targetcode)
-        # print(targetcodes.shape)
         eeg_with_targetcode = np.vstack((eeg, targetcodes))
-        # print(eeg_with_targetcode.shape)
         eeg_output_for_vis = np.hstack((eeg_output_for_vis, eeg_with_targetcode))
         # Spatial filtering and decoding
         eeg_spatial_filtered = spatial_filter(eeg, channelSelection)
@@ -384,20 +364,19 @@ class PlayerCursor(pygame.sprite.Sprite):
         else:  # default
             buffer_length = 900  # 900 frames = 30 seconds.
 
-        x_control, y_control, x_control_buffer, y_control_buffer, d = decoder_arpsd(eeg_spatial_filtered,
-                                                                                    buffer_length,
-                                                                                    x_control_buffer,
-                                                                                    y_control_buffer,
-                                                                                    normalize_mode=normalize_mode)
-        # Restore scaling to the control vectors
-        # this scaling number can shift the mean of the velocity distribution
+        x_control, y_control, x_control_buffer, y_control_buffer = decoder_arpsd(eeg_spatial_filtered,
+                                                                                 buffer_length,
+                                                                                 x_control_buffer,
+                                                                                 y_control_buffer,
+                                                                                 normalize_mode=normalize_mode)
+        # restore scaling to the control vectors
         x_control = x_control * scaling_factor
         y_control = y_control * scaling_factor
 
-        # Velocity-based approach
+        # velocity-based approach
         self.v.xy = x_control, y_control
 
-        # Pass the velocity into screen edge collision check. (NOT target collision check)
+        # screen edge collision check
         if self.rect.x + self.v.x <= (screen_width - self.radius * 2) * self.edge_threshold:
             print("hit left wall")
             self.v.x = 0
@@ -411,17 +390,15 @@ class PlayerCursor(pygame.sprite.Sprite):
             print("hit bottom wall")
             self.v.y = 0
 
-        # Threshold velocity with Cv
+        # threshold velocity
         v = np.array([[self.v.x], [self.v.y]], dtype=np.float32)
-        # print("length of v before capping: " + str(np.linalg.norm(v)))
         if np.linalg.norm(v) > self.max_cursor_velocity:
-            # print("max cursor velocity hit: " + str(self.max_cursor_velocity))
             control_max = np.array([[self.max_cursor_velocity], [self.max_cursor_velocity]], dtype=np.float32)
             new_v = control_max * v.transpose() / np.linalg.norm(v)
             self.v.x = new_v[0][0]
             self.v.y = new_v[0][1]
 
-        # Finally, we have to update the position as well:
+        # update position
         self.current_pos[0] += self.v.x
         self.current_pos[1] += self.v.y
 
@@ -450,10 +427,10 @@ def main():
     pygame.mouse.set_visible(False)  # hide mouse
     clock = pygame.time.Clock()
 
-    # Main Loop Trackers!!!
-    keepGoing = True  # controls whether the program continues to run.
-    start = False  # controls the feedback control period.
-    seconds_out_tracker = False  # controls the break period.
+    # status variables
+    keepGoing = True  # controls whether the program continues to run
+    start = False  # controls the feedback control period
+    seconds_out_tracker = False  # controls the break period
 
     # initialize trial number tracker
     if game_mode == "CP":
@@ -472,14 +449,14 @@ def main():
             playerSprite.clear(screen, background)
             seconds_out_tracker = False
             if run_no > 0:
-                screen.blit(textsurface, (200, 400))
+                screen.blit(textsurf0, (200, 400))
 
             wait_frames += 1  # countdown to next trial
 
             if wait_frames > 100:
                 screen.fill(pygame.Color("white"))
-                screen.blit(textsurface_new, (282, 400))
-                screen.blit(textsurface2_new, (20, 425))
+                screen.blit(textsurf1, (282, 400))
+                screen.blit(textsurf2, (20, 425))
 
                 my_event = pygame.event.Event(seconds_out, {"message": "Break time over"})
                 pygame.event.post(my_event)
@@ -551,9 +528,18 @@ def main():
                     player = PlayerCursor()
                     playerSprite.add(player)
 
-                    if game_mode == "CP":  # NOT SUPPORTED IN THIS BUILD YET
+                    if game_mode == "DT_1D" or game_mode == "DT_2D":
+                        chosen = targetSprite.get_sprite(target_no)
+                        wrong = inactivetargetSprite.get_sprite(target_no)
+                        chosenTarget.empty()
+                        chosenTarget.add(chosen)  # add to current activated target sprite
+                        wrongTarget.empty()
+                        wrongTarget.add(wrong)
+
+                    elif game_mode == "CP":  # NOT SUPPORTED IN THIS BUILD
                         if run_no >= 0:
-                            block = Targets.ContinuousTarget(targetPath, trialLength, max_target_velocity, target_physics_mode)
+                            block = Targets.ContinuousTarget(targetPath, trialLength, max_target_velocity,
+                                                             target_physics_mode)
                             targetSprite.add(block)
                             chosenTarget.add(random.choice(targetSprite.sprites()))
 
@@ -561,15 +547,6 @@ def main():
                             block = Targets.CircularReachTarget()
                             targetSprite.add(block)
                             chosenTarget.add(random.choice(targetSprite.sprites()))
-
-                    elif game_mode == "DT_1D" or game_mode == "DT_2D":
-                        chosen = targetSprite.get_sprite(target_no)
-                        wrong = inactivetargetSprite.get_sprite(target_no)
-                        chosenTarget.empty()
-                        chosenTarget.add(chosen)  # add to current activated target sprite
-                        wrongTarget.empty()
-                        wrongTarget.add(wrong)
-                        # targetSprite.remove(chosen)  # remove from pool of possible targets
 
                     stepcapturer = PlayerStepCapturer()
                     playerStepCapturerSprite.add(stepcapturer)
@@ -587,8 +564,11 @@ def main():
             if run_no >= 0:
                 chosenTarget.update(frames, run_no, target_no)
                 wrongTarget.update(frames, run_no, target_no)
-                step_velocity_vector, true_vel_x, true_vel_y = playerStepCapturerSprite.update(frames, run_no, target_no, true_vel_x, true_vel_y)
-                player_path_x, player_path_y, x_control_buffer, y_control_buffer = playerSprite.update(step_velocity_vector, x_control_buffer, y_control_buffer, correct_order[target_no])
+                step_velocity_vector, true_vel_x, true_vel_y = playerStepCapturerSprite.update(frames, run_no,
+                                                                                               target_no, true_vel_x,
+                                                                                               true_vel_y)
+                player_path_x, player_path_y, x_control_buffer, y_control_buffer = playerSprite.update(
+                    step_velocity_vector, x_control_buffer, y_control_buffer, correct_order[target_no])
 
                 chosenTarget.clear(screen, background)
                 playerSprite.clear(screen, background)
@@ -609,7 +589,7 @@ def main():
                         now = now.strftime("%Y-%m-%d-%H-%M-%S")
                         datetimes[run_no][target_no] = now
 
-                        try:  # IF THIS IS NOT THE LAST TARGET IN THIS RUN
+                        try:  # if this is not the last target in this run
                             target_no += 1
                             chosen = targetSprite.get_sprite(target_no)
                             wrong = inactivetargetSprite.get_sprite(target_no)
@@ -617,13 +597,12 @@ def main():
                             chosenTarget.add(chosen)  # add to current activated target sprite
                             wrongTarget.empty()
                             wrongTarget.add(wrong)
-                            # targetSprite.remove(chosen)  # remove from pool of possible targets
                         except:
                             pass
 
                         screen.fill(pygame.Color("white"))
 
-                        # Reset player
+                        # reset player
                         pygame.mouse.set_pos(400, 400)
                         playerSprite.empty()
                         playerStepCapturerSprite.empty()
@@ -641,7 +620,7 @@ def main():
                         now = now.strftime("%Y-%m-%d-%H-%M-%S")
                         datetimes[run_no][target_no] = now
 
-                        try:  # IF THIS IS NOT THE LAST TARGET IN THIS RUN
+                        try:  # if this is not the last target in this run
                             target_no += 1
                             chosen = targetSprite.get_sprite(target_no)
                             wrong = inactivetargetSprite.get_sprite(target_no)
@@ -649,13 +628,12 @@ def main():
                             chosenTarget.add(chosen)  # add to current activated target sprite
                             wrongTarget.empty()
                             wrongTarget.add(wrong)
-                            # targetSprite.remove(chosen)  # remove from pool of possible targets
                         except:
                             pass
 
                         screen.fill(pygame.Color("white"))
 
-                        # Reset player
+                        # reset player
                         pygame.mouse.set_pos(400, 400)
                         playerSprite.empty()
                         playerStepCapturerSprite.empty()
@@ -673,7 +651,7 @@ def main():
                         now = now.strftime("%Y-%m-%d-%H-%M-%S")
                         datetimes[run_no][target_no] = now
 
-                        try:  # IF THIS IS NOT THE LAST TARGET IN THIS RUN
+                        try:  # if this is not the last target in this run
                             target_no += 1
                             chosen = targetSprite.get_sprite(target_no)
                             wrong = inactivetargetSprite.get_sprite(target_no)
@@ -681,7 +659,6 @@ def main():
                             chosenTarget.add(chosen)  # add to current activated target sprite
                             wrongTarget.empty()
                             wrongTarget.add(wrong)
-                            # targetSprite.remove(chosen)  # remove from pool of possible targets
                         except:
                             pass
 
@@ -699,18 +676,14 @@ def main():
                         frames = 0
 
             elif run_no == -1:
-                # CP calibration trial. Not implemented yet in this build.
+                # CP calibration trial. not included in this build.
                 pass
 
             if game_mode == "DT_1D" or game_mode == "DT_2D":
-                # print(target_no)
-                # print(target_count)
                 if target_no == target_count:
                     print("All sprites killed")
                     print("Just finished run number " + str(run_no))
 
-                    # EXPERIMENTAL PARAM 2: WHETHER CARRY ON OR NOT.
-                    # THE BELOW 2 LINES LOCATED HERE = NO CARRY ON BETWEEN RUNS.
                     if experimental_param_array[run_no].startswith("CO"):
                         carryon = int(experimental_param_array[run_no].split("CO")[1])
                         if carryon == 1 or carryon == 2:
@@ -728,16 +701,14 @@ def main():
                     frames = 0
                     start = False
 
-            elif game_mode == "CP" and run_no == -1:  # not fully verified in current build
+            elif game_mode == "CP" and run_no == -1:
                 if frames >= trial_length:
-                    frames = trial_length - 1  # force frames to stay below triallength to circumvent data saving issue; since we don't save data for calibration trial anyway.
-                if score == 5:  # Number of calibration targets needed to hit
+                    frames = trial_length - 1  # force frames to stay below trial_length
+                if score == 5:  # number of calibration targets needed to hit
                     run_no += 1
                     wait_frames = 0
                     frames = 0
                     start = False
-            # print(run_no)
-            # print(run_count)
             if run_no == run_count:
                 print("Experiment finished.")
 
@@ -753,26 +724,25 @@ def main():
                     }
 
                     trial_data_df = pd.DataFrame(trial_data, columns=list(trial_data.keys()))
-                    trial_data_df.to_csv(save_file_directory.get()+'/'+str(r)+'_'+str(experimental_param_array[r])+'.csv', index=False, header=True)
+                    trial_data_df.to_csv(
+                        save_file_directory.get() + '/' + str(r) + '_' + str(experimental_param_array[r]) + '.csv',
+                        index=False, header=True)
 
-                # This code is to hide the main tkinter window
+                # hide the main tkinter window
                 root = tkinter.Tk()
                 root.attributes('-topmost', 1)
                 root.withdraw()
 
-                # Message Box
-                tkinter.messagebox.showinfo("Thank You", "The experiment is finished. Please find the data saved in " + str(save_file_directory.get()) + " and email it to hyonyous@andrew.cmu.edu")
-
+                # results saved
+                tkinter.messagebox.showinfo("Thank You",
+                                            "The experiment is finished. Please find the data saved in " + str(
+                                                save_file_directory.get()))
                 root.deiconify()
                 root.attributes("-topmost", True)
-                # root.mainloop()
-
                 keepGoing = False
-
         pygame.display.flip()
     pygame.mouse.set_visible(True)  # return mouse
 
 
 if __name__ == "__main__":
     main()
-

@@ -321,18 +321,6 @@ def fir1(n: int, Wn, ftype: str = 'default', window='hamming', scaleopt: bool = 
 
 
 def tukeywin(window_length, alpha=0.5):
-    '''The Tukey window, also known as the tapered cosine window, can be regarded as a cosine lobe of width \alpha * N / 2
-    that is convolved with a rectangle window of width (1 - \alpha / 2). At \alpha = 1 it becomes rectangular, and
-    at \alpha = 0 it becomes a Hann window.
-
-    We use the same reference as MATLAB to provide the same results in case users compare a MATLAB output to this function
-    output
-
-    Reference
-    ---------
-    http://www.mathworks.com/access/helpdesk/help/toolbox/signal/tukeywin.html
-
-    '''
     # Special cases
     if alpha <= 0:
         return np.ones(window_length)  # rectangular window
@@ -367,14 +355,11 @@ def normalise(signal_f, amplitude):
     return signal_final
 
 
-def generate_modulated_ersp(frequency, max_amplitude, modulation, modLatency, modWidth, modTaper,
-                          modMinRelAmplitude):
-
+def modulate_signal(frequency, max_amplitude, modulation, latency, width, taper,
+                    a_min):
     global samples, srate
 
-    if len(frequency) == 1:
-        print("Pure sine wave")  # not implemented.
-    elif len(frequency) == 4:
+    if len(frequency) == 4:
         # design the filter
         n, Wn, beta, ftype = kaiserord(frequency, np.array([0, 1, 0]), np.array([0.05, 0.01, 0.05]), srate)
         num, den = fir1(n, Wn, ftype)
@@ -390,44 +375,46 @@ def generate_modulated_ersp(frequency, max_amplitude, modulation, modLatency, mo
         signal_filtered = signal_filtered[0, int(np.floor(signal_filtered.shape[1] / 2 - samples / 2) + 1):int(
             np.floor(signal_filtered.shape[1] / 2 + samples / 2) + 1)]
 
+    else:
+        raise ValueError('Invalid frequency band definition for modulation')
+
     # normalising such that max absolute amplitude = amplitude
     signal_filtered = normalise(signal_filtered, max_amplitude)
 
-    # modulation section
+    # modulation
     if modulation == 'burst' or modulation == 'invburst':
-        latency = int(np.floor((modLatency / 1000) * srate) + 1)
-        width = int(np.floor((modWidth / 1000) * srate))
-        taper = modTaper
+        latency = int(np.floor((latency / 1000) * srate) + 1)
+        width = int(np.floor((width / 1000) * srate))
 
-        # generating Tukey window for burst
+        # generate Tukey window
         if width < 1:
             width = 0
         win = tukeywin(width, taper)
         win = np.transpose(win)
 
-        # positioning window around latency
+        # position window on latency
         if latency > np.ceil(width / 2):
             win = np.hstack((np.zeros(int(latency - np.ceil(width / 2)), dtype=np.float32), win))  # append horizontally
         else:
             win[1:int(np.ceil(width / 2) - latency + 1)] = 0
 
-        # fitting Tukey window to signal
+        # fit Tukey window to signal
         if len(win) > samples:
             win = win[0:samples]
         elif len(win) < samples:
             win = np.append(win, np.zeros((1, int(samples) - len(win)), dtype=np.float32))
 
-        # inverting in case of inverse burst
+        # invert in case of inverse burst
         if modulation == 'invburst':
             win = 1 - win
 
         if max(win) - min(win) != 0:
             # normalising between modMinRelAmplitude and 1
-            win = modMinRelAmplitude + (1 - modMinRelAmplitude) * (win - min(win)) / (max(win) - min(win))
+            win = a_min + (1 - a_min) * (win - min(win)) / (max(win) - min(win))
 
         elif np.all((win == 0)):
             # window is flat; if all-zero, it should be modMinRelAmplitude instead
-            win = np.tile(modMinRelAmplitude, np.shape(win))
+            win = np.tile(a_min, np.shape(win))
 
         # applying the modulation
         # print(signal_filtered.shape)
@@ -438,22 +425,9 @@ def generate_modulated_ersp(frequency, max_amplitude, modulation, modLatency, mo
     signal_filtered = np.expand_dims(signal_filtered, axis=1)
 
     return signal_filtered
-# for testing
-# x = GenerateERSPModulated([4.8, 5, 12, 12.2], 10, [], 'burst', 30, 20, 0.9, 0.25)
-# plt.plot(x)
 
 
 def generate_colored_noise(n, uniform_dist_range, noise_alpha):
-    """
-    Purpose: Generates a discrete colored noise vector of size n with power
-    spectrum distribution of alpha
-    White noise is sampled from Uniform (-range,range) distribution
-
-    Usage: n - problem size
-    uniform_dist_range - range of the underlying Uniform distribution
-    noise_alpha - resulting colored noise has 1/f^alpha power spectrum
-    """
-
     # Generate the coefficients Hk
     hfa = np.zeros((2 * n, 1), dtype=np.float32)
     hfa[0] = 1.0
@@ -544,11 +518,6 @@ def create_component(location, n, signal, component_list, absolute_mode, mode):
     component_list - updated list of components
     """
     global pos, orientation
-    # lf = leadfield['nyhead_lf_test'][0][0][0]  # extract the leadfield matrix
-    # orientation = leadfield['nyhead_lf_test'][0][0][1]  # default orientations (orthogonal)
-    # pos = leadfield['nyhead_lf_test'][0][0][2]
-    # chanlocs = leadfield['nyhead_lf_test'][0][0][3]
-
     selected_positions = []
 
     if mode == 'sereega' or mode == 'SEREEGA':
@@ -561,9 +530,6 @@ def create_component(location, n, signal, component_list, absolute_mode, mode):
                 selected_positions.append(np.argmin(distances))
         elif absolute_mode == True:
             pos_rounded = np.around(pos).astype(int).tolist()  # round to whole numbers
-            # for i in location:
-            #     if i in pos_rounded:
-            #         selected_positions.append(pos_rounded.index(i))
             selected_positions = [pos_rounded.index(i) for i in location if i in pos_rounded]
 
         for i in selected_positions:
@@ -580,7 +546,7 @@ def create_component(location, n, signal, component_list, absolute_mode, mode):
         if location == 'random':
             selected_positions = random.sample(range(pos.shape[0] + 1), n)
         elif absolute_mode == False:
-            print("absolute coordinate mode must be enabled for brainstorm/brainnetome method")
+            raise ValueError("absolute coordinate mode must be enabled for brainstorm/brainnetome method")
         elif absolute_mode == True:
             # assuming M1_left and M1_right inputs into location argument are vertex indices
             # then, selected_positions is already provided in location argument.
@@ -594,70 +560,10 @@ def create_component(location, n, signal, component_list, absolute_mode, mode):
                 "position": pos[i],
             }
             component_list.append(component)
-    return component_list
+    return component_list1
 
 
-def add_sensornoise(data, mode, value):
-    if mode == 'amplitude':
-        data = data + normalise(rng.random(np.shape(data))*2-1, value)
-    elif mode == 'snr':
-        noise = normalise(rng.random(np.shape(data))*2-1, abs(data[:]).max(0))
-        data = mix_data(data, noise, value)[0]
-    return data
-
-
-def mix_data(signal, noise, snr):
-    """
-    This function is used in the application of sensor-level signal-to-noise ratio.
-    :param signal:
-    :param noise:
-    :param snr:
-    :return:
-    """
-    originalsize = np.shape(signal)
-    # if size(signal, 3) > 1
-    #     signal = reshape(signal, size(signal, 1), []);
-    #     noise = reshape(noise, size(noise, 1), []);
-    # end
-    try:
-        if np.shape(signal)[2] > 1:  # if shape in 3rd dimension is larger than 1
-            # porting tips: https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
-            #          and  http://mathesaurus.sourceforge.net/matlab-numpy.html
-            print("3D signal detected")
-            signal = signal.reshape(np.shape(signal)[0], [], order='F').copy()
-            noise = noise.reshape(np.shape(signal)[0], [], order='F').copy()
-    except IndexError:  # if original shape doesn't have a 3rd dimension
-        pass
-
-    meanamplitude = np.mean(abs(np.append(signal[:], noise[:], 0)))
-
-    # scaling signal and noise, adding together
-    signal = snr * signal / np.linalg.norm(signal, 'fro')
-    noise = (1 - snr) * noise / np.linalg.norm(noise, 'fro')
-    data = signal + noise
-
-    # attempting to keep similar overall amplitude;
-    # returning original signals at same scale
-    scale = meanamplitude / np.mean(abs(data[:]))
-    data = data * scale
-    signal = signal * scale
-    noise = noise * scale
-
-    if np.size(originalsize) > 2:
-        data = np.reshape(data, originalsize)
-        signal = np.reshape(signal, originalsize)
-        noise = np.reshape(noise, originalsize)
-
-    # calculating dB value
-    db = 10 * np.log10((np.sqrt(np.mean(signal[:])) / np.sqrt(np.mean(noise[:]))) ** 2)
-    # print("SNR " + str(snr) + "= " + str(db) + " dB")
-
-    return data, db, signal, noise
-
-# def utl_add_variability()
-
-
-def generate_scalp_data(component_list, sensorNoise):
+def generate_scalp_data(component_list):
     global srate, leadfield, chanlocs, lf
 
     scalpdata = np.zeros((len(chanlocs[0]), int(samples)), dtype=np.float32)
@@ -674,37 +580,18 @@ def generate_scalp_data(component_list, sensorNoise):
         orient = component_list[i]["orientation"]
 
         # projecting signal
-        componentdata[..., i] = project_activity(lf, componentsignal, sourceidx, orient, component_list, normaliseLeadfield=True,
-                                                 normaliseOrientation=True)
+        componentdata[..., i] = project_activity(lf, componentsignal, sourceidx, orient)
 
     # Combining projected component signals into single epoch (sum along components)
     # scalpdata[:, :] = np.sum(componentdata, 2)  # sum along last axis
     scalpdata[:, :] = np.matmul(componentdata, np.ones((componentdata.shape[-1],)))  # fastest (hint from https://github.com/numpy/numpy/issues/16158 and comment from alex.jordan in https://math.stackexchange.com/questions/409460/multiplying-3d-matrix)
     # scalpdata[:, :] = contract("ijk->ij", componentdata)
-
-    # Adding sensor noise
-    # scalpdata = utl_add_sensornoise(scalpdata, 'amplitude', sensorNoise)
-    # scalpdata = utl_add_sensornoise(scalpdata, 'snr', 2)
-
-    # eeg = plt.plot(scalpdata)
-    # plt.show()
     return scalpdata
 
 
-def project_activity(lf, componentsignal, sourceidx, orient, component_list, normaliseLeadfield, normaliseOrientation):
+def project_activity(lf, componentsignal, sourceidx, orient):
     # Getting leadfield
     projection = np.squeeze(lf[:, sourceidx, :])
-    # Alternative way that seems kinda slower for some reason (but actually makes use of the component_list):
-    # projection = np.squeeze(next(item["projection"] for item in component_list if item["sourceIdx"] == sourceidx))
-
-    # if normaliseLeadfield == True:
-    #     #         projection = utl_normalise(projection, 1)  # to fix utl_normalise
-    #     pass
-    #
-    # if normaliseOrientation == True:
-    #     #         orientation = utl_normalise(orientation, 1)
-    #     pass
-
     oriented_signal = (componentsignal * orient).T
     projdata = np.dot(projection, oriented_signal)  # faster than @ or matmul due to small n
 
@@ -714,7 +601,7 @@ def project_activity(lf, componentsignal, sourceidx, orient, component_list, nor
 def import_atlas(filename, mode):
     if mode == 'SEREEGA' or mode == 'sereega' or mode == 'xjview':
         brodmann = loadmat(filename)
-        brodmann_4 = brodmann['wholeMaskMNIAll']['brodmann_area_4'][0][0]  # Primary motor cortex
+        brodmann_4 = brodmann['wholeMaskMNIAll']['brodmann_area_4'][0][0]  # primary motor cortex
 
         mask_for_left = brodmann_4[:, 0] < 0
         mask_for_right = brodmann_4[:, 0] > 0

@@ -143,39 +143,4 @@ def launcher(clearance_level):
     return parameters
 
 
-def embc_input():
-    """
-    Settings used for EMBC 1-page paper submission. (Archived)
-    """
-    
-    # Define user parameters and set default values
-    normalize_mode = 1
-    game_mode = "CP"
-    leadfield_mode = "brainstorm"
-    trial_length = 1800
-    trial_count = 27
-    velocity_gain = 1 / 10
-    max_cursor_velocity = 25  # gets used during calibration
-    max_target_velocity = 0
-    visualization_mode = False
-    summary_visualization_mode = False
-    experiment_mode = True
-    target_physics_mode = "adjust_drag"  # or "adjust_distribution"
 
-    # Convert tkinter user choice variables to actual variables
-    parameters = {
-        'normalize_mode': normalize_mode.get(),
-        'game_mode': game_mode.get(),
-        'leadfield_mode': leadfield_mode.get(),
-        'trialLength': trial_length.get(),
-        'trialCount': trial_count.get(),
-        'velocity_gain': velocity_gain.get(),
-        'visualization_mode': visualization_mode.get(),
-        'summary_visualization_mode': summary_visualization_mode.get(),
-        'experiment_mode': experiment_mode.get(),
-        'max_cursor_velocity': max_cursor_velocity.get(),
-        'max_target_velocity': max_target_velocity.get(),
-        'target_physics_mode': target_physics_mode
-    }
-
-    return parameters
