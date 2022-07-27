@@ -15,4 +15,4 @@ This repository contains code used for the paper "Closed-loop motor imagery EEG 
 ## Citation
 If this software, in whole or in part, helped your project, please consider citing the following paper:
 
-*citation here*
+Shin H, Suma D and He B (2022) Closed-loop motor imagery EEG simulation for brain-computer interfaces. *Front. Hum. Neurosci.* 16:951591. doi: 10.3389/fnhum.2022.951591
