@@ -1,5 +1,7 @@
 # bci-simulator
 
+[![DOI:10.1007/978-3-319-76207-4_15](https://zenodo.org/badge/DOI/10.3389/fnhum.2022.951591.svg)](https://doi.org/10.3389/fnhum.2022.951591)
+
 This repository contains code used for the paper "Closed-loop motor imagery EEG simulation for brain-computer interfaces". The code was developed under partial support from NIH under grant AT009263.
 
 ## Requirements
